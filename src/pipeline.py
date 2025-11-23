@@ -350,7 +350,7 @@ class ReproductionAgent:
                 return json5.loads(cleaned_response)
             except Exception as e2:
                 logger.error(f"Failed to parse JSON with both stdlib and json5: {e2}")
-                logger.error(f"Full raw LLM response:\n{response}")
+                logger.error(f"Full raw EVALLab response:\n{response}")
                 logger.debug(f"Cleaned response:\n{cleaned_response}")
                 return {}
 
@@ -429,7 +429,7 @@ class ReproductionAgent:
         print("\n" + "="*80)
         print("\033[93m┌" + "─"*78 + "┐\033[0m")
         print("\033[93m│\033[0m" +
-              "\033[1;93m STAGE 1.5/4: LLM SECTION EXTRACTION".center(78) + "\033[93m│\033[0m")
+              "\033[1;93m STAGE 1.5/4: EVALLAB SECTION EXTRACTION".center(78) + "\033[93m│\033[0m")
         print("\033[93m├" + "─"*78 + "┤\033[0m")
         print("\033[93m│\033[0m" +
               " 🤖 Using Ollama LLM to extract key sections".ljust(78) + "\033[93m│\033[0m")
@@ -656,7 +656,7 @@ class ReproductionAgent:
             print("\n" + "="*80)
             print("\033[94m┌" + "─"*78 + "┐\033[0m")
             print("\033[94m│\033[0m" +
-                  "\033[1;94m 🤖 LLM ANALYSIS".center(78) + "\033[94m│\033[0m")
+                  "\033[1;94m 🤖 EVALLAB ANALYSIS".center(78) + "\033[94m│\033[0m")
             print("\033[94m├" + "─"*78 + "┤\033[0m")
             print("\033[94m│\033[0m" +
                   " 🧠 AI-powered analysis of result differences".ljust(78) + "\033[94m│\033[0m")
@@ -762,7 +762,7 @@ class ReproductionAgent:
         }
 
     def _extract_paper_sections(self, raw_text: str) -> dict:
-        """Use LLM to extract key sections from paper."""
+        """Use EVALLab to extract key sections from paper."""
         system_prompt = (
             "You are an expert at reading research papers. "
             "Extract the following sections: abstract, methodology, experiments, and results. "
@@ -999,7 +999,7 @@ class ReproductionAgent:
             # Section 4: LLM Analysis
             if analysis:
                 f.write("╔" + "═"*98 + "╗\n")
-                f.write("║" + " SECTION 4: LLM ANALYSIS ".center(98) + "║\n")
+                f.write("║" + " SECTION 4: EVALLAB ANALYSIS ".center(98) + "║\n")
                 f.write("╚" + "═"*98 + "╝\n\n")
                 f.write(analysis + "\n\n")
 

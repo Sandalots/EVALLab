@@ -324,7 +324,7 @@ JSON:"""
 
             return BaselineMetrics(
                 metrics=cleaned_metrics,
-                source="Extracted from paper using LLM"
+                source="Extracted from paper using EVALLab"
             )
         except Exception as e:
             logger.error(f"Failed to extract baseline metrics: {e}")
@@ -923,16 +923,16 @@ Provide a concise analysis (3-4 paragraphs)."""
         # Performance grading
         if success_rate >= 90:
             grade = "EXCELLENT"
-            assessment = "The LLM agent successfully reproduced the experiments with high fidelity."
+            assessment = "The EVALLab agent successfully reproduced the experiments with high fidelity."
         elif success_rate >= 70:
             grade = "GOOD"
-            assessment = "The LLM agent achieved good reproduction with some deviations."
+            assessment = "The EVALLab agent achieved good reproduction with some deviations."
         elif success_rate >= 50:
             grade = "MODERATE"
-            assessment = "The LLM agent partially reproduced results but with notable differences."
+            assessment = "The EVALLab agent partially reproduced results but with notable differences."
         else:
             grade = "POOR"
-            assessment = "The LLM agent struggled to accurately reproduce the baseline results."
+            assessment = "The EVALLab agent struggled to accurately reproduce the baseline results."
 
         lines.extend([
             f"Grade: {grade} ({success_rate:.1f}% success rate)",
@@ -1058,11 +1058,11 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("")
 
         # 4. What the LLM Agent Accomplished
-        lines.append("4. LLM AGENT ACCOMPLISHMENTS")
+        lines.append("4. EVALLab AGENT ACCOMPLISHMENTS")
         lines.append("-" * 80)
 
         lines.extend([
-            "The Local LLM Agent successfully:",
+            "The Local EVALLab Agent successfully:",
             "  ✓ Parsed research paper PDF and extracted methodology",
             "  ✓ Identified and analyzed local codebase structure",
             f"  ✓ Executed {len(experiment_sets)} complete experiment sets",
@@ -1112,7 +1112,7 @@ Provide a concise analysis (3-4 paragraphs)."""
             lines.append(
                 "     3. Check for stochastic processes (set random seeds)")
 
-        lines.append("\nLLM Agent Enhancements:")
+        lines.append("\EVALLab Agent Enhancements:")
         lines.append("  1. BASELINE EXTRACTION:")
         lines.append(
             "     → Improve parsing of configuration-specific metrics")
@@ -1181,19 +1181,19 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         if success_rate >= 70:
             conclusion = (
-                "The LLM agent demonstrates strong capability in automating research "
+                "The EVALLab agent demonstrates strong capability in automating research "
                 "reproduction. With minor refinements to baseline extraction and validation, "
                 "it can serve as a reliable tool for verifying experimental results."
             )
         elif success_rate >= 40:
             conclusion = (
-                "The LLM agent shows promise but requires significant improvements in "
+                "The EVALLab agent shows promise but requires significant improvements in "
                 "configuration matching and environment validation. Focus on data integrity "
                 "and parameter alignment before production use."
             )
         else:
             conclusion = (
-                "The LLM agent requires substantial development before being production-ready. "
+                "The EVALLab agent requires substantial development before being production-ready. "
                 "Critical issues in data handling, metric extraction, or environment setup "
                 "must be addressed. Consider manual verification of key experiment steps."
             )
@@ -1497,7 +1497,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         return generated_files
 
     def _generate_visualization_index(self, files: Dict[str, Path],
-                                      df, paper_name: str) -> str:
+                                      df, paper_name: str, output_dir: Path = None) -> str:
         """Generate an HTML index page for all visualizations."""
         import pandas as pd
         from datetime import datetime
@@ -1508,15 +1508,25 @@ Provide a concise analysis (3-4 paragraphs)."""
         import json
         runtime_seconds = None
         peak_memory_mb = None
+        # Ensure output_dir is always set
+        if output_dir is None:
+            if 'overall_performance' in files:
+                output_dir = Path(files['overall_performance']).parent
+            else:
+                output_dir = Path('.')
+        import logging
         try:
-            # Use the same directory as the HTML report for resource_usage.json
-            html_dir = Path(files['overall_performance']).parent if 'overall_performance' in files else Path('.')
-            resource_path = html_dir / 'resource_usage.json'
+            resource_path = output_dir / 'resource_usage.json'
             with open(resource_path, 'r') as f:
                 usage = json.load(f)
                 runtime_seconds = usage.get('runtime_seconds')
                 peak_memory_mb = usage.get('peak_memory_mb')
-        except Exception:
+            if runtime_seconds is None or peak_memory_mb is None:
+                logging.warning(f"resource_usage.json found but contains None values: {usage}")
+            else:
+                logging.info(f"Loaded resource_usage.json: runtime_seconds={runtime_seconds}, peak_memory_mb={peak_memory_mb}")
+        except Exception as e:
+            logging.warning(f"Failed to load resource_usage.json: {e}")
             pass
         resource_usage_html = f'''
         <div class="metric">
@@ -1635,7 +1645,7 @@ Provide a concise analysis (3-4 paragraphs)."""
     <h2>{paper_name}</h2>
     
     <div class="summary">
-        <h3>Executive Summary</h3>
+        <h3>EVALLab Performance Summary</h3>
         <div class="metric">
             <div>Total Comparisons</div>
             <div class="metric-value">{len(df)}</div>
@@ -1707,9 +1717,13 @@ Provide a concise analysis (3-4 paragraphs)."""
 """
         # Add agent log if available, fix encoding issues
         import html as html_module
-        # Look for agent_execution.log in the same directory as the HTML report
-        html_dir = Path(files['overall_performance']).parent if 'overall_performance' in files else Path('.')
-        log_path = html_dir / 'agent_execution.log'
+        # Always use output_dir for agent_execution.log
+        if output_dir is None:
+            if 'overall_performance' in files:
+                output_dir = Path(files['overall_performance']).parent
+            else:
+                output_dir = Path('.')
+        log_path = output_dir / 'agent_execution.log'
         if log_path.exists():
             with open(log_path, 'r', encoding='utf-8', errors='replace') as logf:
                 log_content = logf.read()

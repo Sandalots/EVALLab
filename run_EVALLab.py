@@ -15,6 +15,8 @@ import time
 import tracemalloc
 import argparse
 from pathlib import Path
+import json
+import traceback
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
@@ -282,6 +284,7 @@ def main():
 
     try:
         agent = ReproductionAgent()
+
         results = agent.run(paper_path=paper_path,
                             codebase_source=codebase_source)
 
@@ -291,6 +294,12 @@ def main():
         current, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
         peak_mb = peak / (1024 * 1024)
+
+        # Save runtime and memory info for HTML report BEFORE visualizations
+        resource_path = output_dir / 'resource_usage.json'
+        with open(resource_path, 'w') as f:
+            json.dump({'runtime_seconds': runtime_seconds,
+                      'peak_memory_mb': peak_mb}, f)
 
         if 'error' in results:
             print(f"\n❌ Error: {results['error']}")
@@ -309,23 +318,16 @@ def main():
         print("\n\033[1;96m📊 Results Summary:\033[0m")
         print(f"  • All outputs saved to: \033[1;93m{output_dir}/\033[0m")
         print(
-            f"  • \033[1;97mRaw agent log:\033[0m \033[1;93m{output_dir}/agent_execution.log\033[0m")
+            f"  • \033[1;97mRaw EVALLab agent log:\033[0m \033[1;93m{output_dir}/agent_execution.log\033[0m")
         print(
             f"  • Visualizations: \033[1;93m{output_dir}/visualizations.html\033[0m")
         print(
-            f"  • CSV data: \033[1;93m{output_dir}/detailed_comparison.csv\033[0m")
+            f"  • CSV data: \033[1;93m{output_dir}/detailed_comparison.csv\033[0m\n")
         print(f"  • Total runtime: {runtime_seconds:.2f} seconds")
         print(f"  • Peak memory usage: {peak_mb:.2f} MB")
 
         print(
             f"\n\033[1;92m✨ Open the HTML dashboard ({output_dir}/visualizations.html) in your browser to explore results!\033[0m\n")
-
-        # Save runtime and memory info for HTML report
-        resource_path = output_dir / 'resource_usage.json'
-        with open(resource_path, 'w') as f:
-            import json
-            json.dump({'runtime_seconds': runtime_seconds,
-                      'peak_memory_mb': peak_mb}, f)
 
         return 0
 
@@ -333,8 +335,7 @@ def main():
         print("\n\n⚠️  Interrupted by user")
         return 1
     except Exception as e:
-        print(f"\n❌ Error: {e}")
-        import traceback
+        print(f"\n❌ Error: {e}") 
         traceback.print_exc()
         return 1
 
