@@ -332,8 +332,9 @@ def main():
             }
             # Remove any missing files
             files = {k: v for k, v in file_map.items() if v and v.exists()}
-            # Regenerate the per-paper HTML
-            html_content = result_evaluator._generate_visualization_index(files, df, paper_name, output_dir)
+            # Regenerate the per-paper HTML using the helper.dashboard function
+            from src.helper.dashboard import generate_visualization_index_html
+            html_content = generate_visualization_index_html(files, df, paper_name, output_dir)
             html_path = output_dir / 'visualizations.html'
             with open(html_path, 'w') as f:
                 f.write(html_content)
