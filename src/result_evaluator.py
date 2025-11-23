@@ -1504,6 +1504,25 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         success_rate = df['within_threshold'].mean() * 100
 
+        # Load resource usage if available
+        import json
+        resource_usage_html = ""
+        try:
+            with open('outputs/resource_usage.json', 'r') as f:
+                usage = json.load(f)
+            resource_usage_html = f'''
+        <div class="metric">
+            <div>Total Runtime</div>
+            <div class="metric-value">{usage['runtime_seconds']:.2f} seconds</div>
+        </div>
+        <div class="metric">
+            <div>Peak Memory Usage</div>
+            <div class="metric-value">{usage['peak_memory_mb']:.2f} MB</div>
+        </div>
+        '''
+        except Exception:
+            pass
+
         html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -1624,6 +1643,7 @@ Provide a concise analysis (3-4 paragraphs)."""
             <div>Mean Deviation</div>
             <div class="metric-value">{df['percent_difference'].abs().mean():.2f}%</div>
         </div>
+        {resource_usage_html}
     </div>
     
     <h2>Visualizations</h2>

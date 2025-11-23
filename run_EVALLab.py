@@ -17,6 +17,13 @@ sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 def main():
     """Run agent with command-line arguments or auto-detection."""
+    import time
+    import tracemalloc
+
+    # Start runtime and memory tracking
+    start_time = time.time()
+    tracemalloc.start()
+
     parser = argparse.ArgumentParser(
         description='EVALLab: Research Paper Reproduction Agent',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -249,10 +256,18 @@ Examples:
     print("\033[1;92m🚀 LAUNCHING 4-STAGE REPRODUCTION WORKFLOW...\033[0m")
     print("=" * 100 + "\n")
 
+
     try:
         agent = ReproductionAgent()
         results = agent.run(paper_path=paper_path,
                             codebase_source=codebase_source)
+
+        # Stop runtime and memory tracking
+        end_time = time.time()
+        runtime_seconds = end_time - start_time
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        peak_mb = peak / (1024 * 1024)
 
         if 'error' in results:
             print(f"\n❌ Error: {results['error']}")
@@ -270,17 +285,19 @@ Examples:
 
         print("\n\033[1;96m📊 Results Summary:\033[0m")
         print("  • All outputs saved to: \033[1;93m./outputs/\033[0m")
-        print(
-            "  • \033[1;97mComplete execution log:\033[0m \033[1;93m./outputs/[paper_name]_results.txt\033[0m")
-        print(
-            "  • \033[1;97mRaw agent log:\033[0m \033[1;93m./outputs/agent_execution.log\033[0m")
-        print(
-            "  • Visualizations: \033[1;93m./outputs/visualizations/visualizations.html\033[0m")
-        print(
-            "  • CSV data: \033[1;93m./outputs/visualizations/detailed_comparison.csv\033[0m")
+        print("  • \033[1;97mComplete execution log:\033[0m \033[1;93m./outputs/[paper_name]_results.txt\033[0m")
+        print("  • \033[1;97mRaw agent log:\033[0m \033[1;93m./outputs/agent_execution.log\033[0m")
+        print("  • Visualizations: \033[1;93m./outputs/visualizations/visualizations.html\033[0m")
+        print("  • CSV data: \033[1;93m./outputs/visualizations/detailed_comparison.csv\033[0m")
+        print(f"  • Total runtime: {runtime_seconds:.2f} seconds")
+        print(f"  • Peak memory usage: {peak_mb:.2f} MB")
 
-        print(
-            "\n\033[1;92m✨ Open the HTML dashboard (outputs/visualizations/visualizations.html) in your browser to explore results!\033[0m\n")
+        print("\n\033[1;92m✨ Open the HTML dashboard (outputs/visualizations/visualizations.html) in your browser to explore results!\033[0m\n")
+
+        # Save runtime and memory info for HTML report
+        with open('outputs/resource_usage.json', 'w') as f:
+            import json
+            json.dump({'runtime_seconds': runtime_seconds, 'peak_memory_mb': peak_mb}, f)
 
         return 0
 
