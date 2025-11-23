@@ -1517,8 +1517,10 @@ Provide a concise analysis (3-4 paragraphs)."""
         import logging
         try:
             resource_path = output_dir / 'resource_usage.json'
+            print(f"[DEBUG] Attempting to read resource usage from: {resource_path}")
             with open(resource_path, 'r') as f:
                 usage = json.load(f)
+                print(f"[DEBUG] Loaded resource_usage.json contents: {usage}")
                 runtime_seconds = usage.get('runtime_seconds')
                 peak_memory_mb = usage.get('peak_memory_mb')
             if runtime_seconds is None or peak_memory_mb is None:
@@ -1527,6 +1529,7 @@ Provide a concise analysis (3-4 paragraphs)."""
                 logging.info(f"Loaded resource_usage.json: runtime_seconds={runtime_seconds}, peak_memory_mb={peak_memory_mb}")
         except Exception as e:
             logging.warning(f"Failed to load resource_usage.json: {e}")
+            print(f"[DEBUG] Exception while reading resource_usage.json: {e}")
             pass
         resource_usage_html = f'''
         <div class="metric">
