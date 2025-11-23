@@ -1266,7 +1266,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         logger.info(f"Generating visualizations for {len(df)} comparisons...")
 
         # 1. Overall Performance Comparison Bar Chart
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(13, 8))
         within_threshold = df['within_threshold'].sum()
         total = len(df)
         outside_threshold = total - within_threshold
@@ -1293,7 +1293,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         logger.info(f'✓ Generated: {file_path}')
 
         # 2. Performance by Configuration
-        fig, ax = plt.subplots(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(16, 10))
         config_stats = df.groupby(['granularity', 'strategy']).agg({
             'within_threshold': 'sum',
             'metric_name': 'count'
@@ -1330,7 +1330,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         logger.info(f'✓ Generated: {file_path}')
 
         # 3. Scatter Plot: Baseline vs Reproduced Values
-        fig, ax = plt.subplots(figsize=(10, 10))
+        fig, ax = plt.subplots(figsize=(13, 13))
 
         # Color by whether within threshold
         colors = df['within_threshold'].map(
@@ -1366,7 +1366,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         logger.info(f'✓ Generated: {file_path}')
 
         # 4. Distribution of Percent Differences
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(15, 7))
 
         # Cap extreme values for better visualization
         percent_diff_capped = df['percent_difference'].clip(-50, 50)
@@ -1394,7 +1394,7 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         # 5. Heatmap: Performance by Granularity and Task Type
         if 'granularity' in df.columns and 'task_type' in df.columns:
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plt.subplots(figsize=(13, 8))
 
             pivot = df.pivot_table(
                 values='within_threshold',
@@ -1439,7 +1439,7 @@ Provide a concise analysis (3-4 paragraphs)."""
             ]
         }
 
-        fig, ax = plt.subplots(figsize=(8, 4))
+        fig, ax = plt.subplots(figsize=(11, 5))
         ax.axis('tight')
         ax.axis('off')
 
@@ -1504,24 +1504,36 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         success_rate = df['within_threshold'].mean() * 100
 
-        # Load resource usage if available
+        # Load resource usage if available, always show fields
         import json
-        resource_usage_html = ""
+        runtime_seconds = None
+        peak_memory_mb = None
         try:
             with open('outputs/resource_usage.json', 'r') as f:
                 usage = json.load(f)
-            resource_usage_html = f'''
+                runtime_seconds = usage.get('runtime_seconds')
+                peak_memory_mb = usage.get('peak_memory_mb')
+        except Exception:
+            pass
+        resource_usage_html = f'''
         <div class="metric">
             <div>Total Runtime</div>
-            <div class="metric-value">{usage['runtime_seconds']:.2f} seconds</div>
+            <div class="metric-value">{runtime_seconds:.2f} seconds</div>
         </div>
         <div class="metric">
             <div>Peak Memory Usage</div>
-            <div class="metric-value">{usage['peak_memory_mb']:.2f} MB</div>
+            <div class="metric-value">{peak_memory_mb:.2f} MB</div>
+        </div>
+        ''' if runtime_seconds is not None and peak_memory_mb is not None else '''
+        <div class="metric">
+            <div>Total Runtime</div>
+            <div class="metric-value">N/A</div>
+        </div>
+        <div class="metric">
+            <div>Peak Memory Usage</div>
+            <div class="metric-value">N/A</div>
         </div>
         '''
-        except Exception:
-            pass
 
         html = f"""<!DOCTYPE html>
 <html>

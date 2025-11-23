@@ -108,7 +108,7 @@ Examples:
     print("\033[1;95m│\033[0m" + "   📋 Complete Execution Log  → Full CLI output with all stages and colored metrics".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + "   📊 Summary Statistics      → Success rate, deviation metrics, performance grades".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" +
-          "   🤖 LLM Analysis            → AI-powered insights into result differences".ljust(98) + "\033[1;95m│\033[0m")
+          "   🤖 EVALLab Analysis            → AI-powered insights into result differences".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + "   📋 Conclusions             → Comprehensive findings and improvement recommendations".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + "   📈 Visualizations          → 7+ charts (bar, scatter, heatmap, histogram, tables)".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" +
@@ -131,7 +131,7 @@ Examples:
     print("\033[1;96m│\033[0m" +
           "   3. Analyze outputs/visualizations/detailed_comparison.csv for raw metrics".ljust(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m│\033[0m" +
-          "   4. Read LLM insights and recommendations in the results file".ljust(98) + "\033[1;96m│\033[0m")
+          "   4. Read EVALLab insights and recommendations in the results file".ljust(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m│\033[0m" +
           "   5. Check outputs/agent_execution.log for detailed agent activity".ljust(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m│\033[0m" + " ".ljust(98) + "\033[1;96m│\033[0m")
