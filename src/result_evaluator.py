@@ -1509,7 +1509,10 @@ Provide a concise analysis (3-4 paragraphs)."""
         runtime_seconds = None
         peak_memory_mb = None
         try:
-            with open('outputs/resource_usage.json', 'r') as f:
+            # Use the same directory as the HTML report for resource_usage.json
+            html_dir = Path(files['overall_performance']).parent if 'overall_performance' in files else Path('.')
+            resource_path = html_dir / 'resource_usage.json'
+            with open(resource_path, 'r') as f:
                 usage = json.load(f)
                 runtime_seconds = usage.get('runtime_seconds')
                 peak_memory_mb = usage.get('peak_memory_mb')
@@ -1704,7 +1707,9 @@ Provide a concise analysis (3-4 paragraphs)."""
 """
         # Add agent log if available, fix encoding issues
         import html as html_module
-        log_path = Path('outputs') / 'agent_execution.log'
+        # Look for agent_execution.log in the same directory as the HTML report
+        html_dir = Path(files['overall_performance']).parent if 'overall_performance' in files else Path('.')
+        log_path = html_dir / 'agent_execution.log'
         if log_path.exists():
             with open(log_path, 'r', encoding='utf-8', errors='replace') as logf:
                 log_content = logf.read()

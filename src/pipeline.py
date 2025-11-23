@@ -126,23 +126,12 @@ class ColoredFormatter(logging.Formatter):
         return f"{colored_time} - {colored_name} - {colored_level} - {colored_message}"
 
 
-# Set up dual logging: colored console + plain file
-# Console handler with colors
+# Only set up a colored console handler here; file handler is set up per-paper in run_EVALLab.py
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(ColoredFormatter(datefmt='%Y-%m-%d %H:%M:%S'))
-
-# File handler without colors (plain text for log file)
-log_file_path = Path('./outputs/agent_execution.log')
-log_file_path.parent.mkdir(exist_ok=True, parents=True)
-file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')
-file_handler.setFormatter(logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-))
-
 logging.basicConfig(
     level=logging.INFO,
-    handlers=[console_handler, file_handler]
+    handlers=[console_handler]
 )
 logger = logging.getLogger(__name__)
 
@@ -961,8 +950,12 @@ class ReproductionAgent:
                       report: str, summary_stats: str, analysis: str,
                       conclusions: str, experiment_sets: list):
         """Save comprehensive results with full execution log to output directory."""
-        output_file = self.output_dir / f"{paper_path.stem}_results.txt"
-        log_file = Path('./outputs/agent_execution.log')
+
+        # Save results and log in per-paper visualizations directory
+        viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
+        viz_dir.mkdir(parents=True, exist_ok=True)
+        output_file = viz_dir / f"{paper_path.stem}_results.txt"
+        log_file = viz_dir / 'agent_execution.log'
 
         with open(output_file, 'w', encoding='utf-8') as f:
             # Header

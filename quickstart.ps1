@@ -48,10 +48,10 @@ if (-not (Test-Path $codebaseDir)) {
 }
 
 Write-Host "To run EVALLab on the Decontextualization paper, use the following command:"
-Write-Host "python run_EVALLab.py papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material/"
+Write-Host "python run_EVALLab.py --paper papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material/"
 
 if (Test-Path $codebaseDir) {
-    python run_EVALLab.py papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material/
+    python run_EVALLab.py --paper papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material/
 } else {
     Write-Warning "The manually placed Decontextualization codebase is required to run the example."
 }

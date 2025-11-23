@@ -58,5 +58,5 @@ if [ ! -d "papers/codebases/supplementary_material" ]; then
 
 # else run python3 run_EVALLab.py papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material
 else
-    python3 run_EVALLab.py papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material/
+    python3 run_EVALLab.py --paper papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material/
 fi

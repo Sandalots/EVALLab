@@ -1,3 +1,5 @@
+import logging
+from src.pipeline import ColoredFormatter
 """===============================================================================
 EVALLAB ENTRYPOINT: RUNS THE EVALLAB PIPELINE
 
@@ -8,6 +10,9 @@ initializes the agent's pipeline, and orchestrates the full research paper repro
 
 from src.pipeline import ReproductionAgent
 import sys
+
+import time
+import tracemalloc
 import argparse
 from pathlib import Path
 
@@ -15,30 +20,37 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 
-def main():
-    """Run agent with command-line arguments or auto-detection."""
-    import time
-    import tracemalloc
+def setup_logging(output_dir):
+    log_file = Path(output_dir) / 'agent_execution.log'
+    # Remove all handlers associated with the root logger object.
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    root_logger.setLevel(logging.INFO)
+    # File handler (plain)
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    # Console handler (color)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(ColoredFormatter(datefmt='%Y-%m-%d %H:%M:%S'))
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
 
-    # Start runtime and memory tracking
+def main():
+    parser = argparse.ArgumentParser(description="EVALLab: Automated Research Reproduction Agent")
+    parser.add_argument('--paper', type=str, help='Path to the research paper PDF')
+    parser.add_argument('--code', type=str, help='Path or URL to the codebase')
+    args = parser.parse_args()
+
     start_time = time.time()
     tracemalloc.start()
 
-    parser = argparse.ArgumentParser(
-        description='EVALLab: Research Paper Reproduction Agent',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
-Examples:
-  python3 run_EVALLab.py                                    # Auto-detect or use Decontextualisation.pdf
-    python3 run_EVALLab.py papers/MyPaper.pdf                  # Specific paper
-    python3 run_EVALLab.py papers/MyPaper.pdf --code ./my_code # Specific paper + local code
-  python3 run_EVALLab.py --code https://github.com/user/repo # Auto-detect paper + GitHub code
-        '''
-    )
-    parser.add_argument('paper', nargs='?', type=str,
-                        help='Path to research paper PDF (default: papers/Decontextualisation.pdf or auto-detect)')
-    parser.add_argument(
-        '--code', type=str, help='Path to local codebase or GitHub URL (default: auto-detect from papers/codebases/ or papers)')
+    # Banner and intro
+    print("\n" + "=" * 100)
+    print("\033[1;93mEVALLab: Automated Research Reproduction Agent\033[0m".center(100))
+    print("=" * 100 + "\n")
+
+    # ... (rest of main function body)
 
     args = parser.parse_args()
 
@@ -124,6 +136,7 @@ Examples:
           "\033[1;97m NEXT STEPS AFTER COMPLETION\033[0m".center(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m├" + "─" * 98 + "┤\033[0m")
     print("\033[1;96m│\033[0m" + " ".ljust(98) + "\033[1;96m│\033[0m")
+
     print("\033[1;96m│\033[0m" +
           "   1. Review outputs/[paper_name]_results.txt for complete execution log".ljust(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m│\033[0m" +
@@ -144,7 +157,7 @@ Examples:
     # Resolve paper path
     workspace_root = Path(__file__).parent
     paper_dir = workspace_root / "papers"
-    paper_source_dir = workspace_root / paper_dir /"codebases"
+    paper_source_dir = workspace_root / paper_dir / "codebases"
 
     paper_path = None
     if args.paper:
@@ -251,11 +264,21 @@ Examples:
 
     print(f"✓ Ollama is running (models: {', '.join(models[:3])})")
 
+    # Set up output directory for this paper
+    paper_name_for_log = paper_path.stem if paper_path else None
+    if paper_name_for_log:
+        paper_stem = paper_name_for_log.lower().replace(' ', '_')
+        output_dir = Path('outputs/visualizations') / paper_stem
+        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir = Path('outputs/visualizations/unknown_paper')
+        output_dir.mkdir(parents=True, exist_ok=True)
+    setup_logging(output_dir)
+
     # Run agent
     print("\n" + "=" * 100)
     print("\033[1;92m🚀 LAUNCHING 4-STAGE REPRODUCTION WORKFLOW...\033[0m")
     print("=" * 100 + "\n")
-
 
     try:
         agent = ReproductionAgent()
@@ -284,20 +307,25 @@ Examples:
         print("=" * 100)
 
         print("\n\033[1;96m📊 Results Summary:\033[0m")
-        print("  • All outputs saved to: \033[1;93m./outputs/\033[0m")
-        print("  • \033[1;97mComplete execution log:\033[0m \033[1;93m./outputs/[paper_name]_results.txt\033[0m")
-        print("  • \033[1;97mRaw agent log:\033[0m \033[1;93m./outputs/agent_execution.log\033[0m")
-        print("  • Visualizations: \033[1;93m./outputs/visualizations/visualizations.html\033[0m")
-        print("  • CSV data: \033[1;93m./outputs/visualizations/detailed_comparison.csv\033[0m")
+        print(f"  • All outputs saved to: \033[1;93m{output_dir}/\033[0m")
+        print(
+            f"  • \033[1;97mRaw agent log:\033[0m \033[1;93m{output_dir}/agent_execution.log\033[0m")
+        print(
+            f"  • Visualizations: \033[1;93m{output_dir}/visualizations.html\033[0m")
+        print(
+            f"  • CSV data: \033[1;93m{output_dir}/detailed_comparison.csv\033[0m")
         print(f"  • Total runtime: {runtime_seconds:.2f} seconds")
         print(f"  • Peak memory usage: {peak_mb:.2f} MB")
 
-        print("\n\033[1;92m✨ Open the HTML dashboard (outputs/visualizations/visualizations.html) in your browser to explore results!\033[0m\n")
+        print(
+            f"\n\033[1;92m✨ Open the HTML dashboard ({output_dir}/visualizations.html) in your browser to explore results!\033[0m\n")
 
         # Save runtime and memory info for HTML report
-        with open('outputs/resource_usage.json', 'w') as f:
+        resource_path = output_dir / 'resource_usage.json'
+        with open(resource_path, 'w') as f:
             import json
-            json.dump({'runtime_seconds': runtime_seconds, 'peak_memory_mb': peak_mb}, f)
+            json.dump({'runtime_seconds': runtime_seconds,
+                      'peak_memory_mb': peak_mb}, f)
 
         return 0
 
