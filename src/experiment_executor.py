@@ -514,23 +514,46 @@ class ExperimentExecutor:
                 logger.error(f"✗ Timeout installing repo as package after 10 minutes")
                 return False
 
-        # If this is the TextAttack repo, always install pytest in its venv
-        if _should_force_pytest_install(codebase_path):
-            logger.info("Detected TextAttack repo, ensuring pytest is installed in venv...")
+
+
+        # Always install pytest in the venv after requirements
+        logger.info("Ensuring pytest is installed in venv...")
+        try:
+            result = subprocess.run(
+                [str(python_executable), '-m', 'pip', 'install', 'pytest'],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            logger.info("✓ Installed pytest in venv")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"✗ Failed to install pytest in venv: {e.stderr}")
+            return False
+        except subprocess.TimeoutExpired:
+            logger.error(f"✗ Timeout installing pytest in venv after 5 minutes")
+            return False
+
+        # If this is the Alibi or Active-Learning-Homology repo, always install matplotlib in its venv
+        if (
+            'alibi' in str(codebase_path).lower() or (codebase_path / 'alibi').is_dir() or
+            'active-learning-homology' in str(codebase_path).lower() or (codebase_path / 'Active-Learning-Homology').is_dir()
+        ):
+            logger.info("Detected Alibi or Active-Learning-Homology repo, ensuring matplotlib is installed in venv...")
             try:
                 result = subprocess.run(
-                    [str(python_executable), '-m', 'pip', 'install', 'pytest'],
+                    [str(python_executable), '-m', 'pip', 'install', 'matplotlib'],
                     check=True,
                     capture_output=True,
                     text=True,
                     timeout=300
                 )
-                logger.info("✓ Installed pytest in TextAttack venv")
+                logger.info("✓ Installed matplotlib in venv")
             except subprocess.CalledProcessError as e:
-                logger.error(f"✗ Failed to install pytest in TextAttack venv: {e.stderr}")
+                logger.error(f"✗ Failed to install matplotlib in venv: {e.stderr}")
                 return False
             except subprocess.TimeoutExpired:
-                logger.error(f"✗ Timeout installing pytest in TextAttack venv after 5 minutes")
+                logger.error(f"✗ Timeout installing matplotlib in venv after 5 minutes")
                 return False
 
         logger.info("✓ Environment setup complete (venv cached if previously installed)")
