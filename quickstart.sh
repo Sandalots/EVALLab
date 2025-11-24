@@ -83,3 +83,6 @@ if [ ! -d "papers/codebases/decontextualization" ]; then
 else
   python3 run_EVALLab.py --paper papers/decontextualisation.pdf --code papers/codebases/decontextualization/
 fi
+
+# open the dashboard to view visualizations
+./open_visualizations.sh
