@@ -340,6 +340,8 @@ class ReproductionAgent:
 
         # Clean control characters that break JSON
         cleaned_response = re.sub(r'[\x00-\x1F\x7F]', '', response)
+        # Strip trailing periods, commas, and whitespace
+        cleaned_response = re.sub(r'[\s\.,]+$', '', cleaned_response)
         try:
             return json.loads(cleaned_response)
         except json.JSONDecodeError:
@@ -789,59 +791,161 @@ class ReproductionAgent:
         ) + f"\nPaper text:\n{truncated_text}"
         try:
             sections = self.extract_json(user_prompt, system_prompt)
-            # Fallback: If sections is a dict with a 'sections' key, try to extract from array
-            if isinstance(sections, dict) and 'sections' in sections:
-                flat_sections = {"abstract": "", "methodology": "", "experiments": "", "results": ""}
-                for item in sections['sections']:
-                    name = item.get('name', '').lower()
-                    content = item.get('content', '')
-                    if 'abstract' in name:
-                        flat_sections['abstract'] += str(content) + '\n'
-                    elif 'methodology' in name or 'approach' in name:
-                        flat_sections['methodology'] += str(content) + '\n'
-                    elif 'experiment' in name:
-                        flat_sections['experiments'] += str(content) + '\n'
-                    elif 'result' in name:
-                        flat_sections['results'] += str(content) + '\n'
-                return flat_sections
-            # Ensure all keys exist
-            default_sections = {
-                "abstract": "", "methodology": "", "experiments": "", "results": ""}
+            # Canonical keys and synonyms
+            canonical_keys = {
+                "abstract": ["abstract"],
+                "methodology": ["methodology", "methods", "approach", "system overview", "framework", "implementation", "setup", "procedure"],
+                "experiments": ["experiments", "experiment", "evaluation", "analysis", "study", "case study", "empirical study", "experimentation"],
+                "results": ["results", "findings", "outcomes", "discussion", "conclusion", "summary"]
+            }
+            def flatten_section(val):
+                # Recursively flatten nested dicts/lists to extract all strings
+                if isinstance(val, str):
+                    return val
+                elif isinstance(val, dict):
+                    result = []
+                    for v in val.values():
+                        flat = flatten_section(v)
+                        if flat:
+                            result.append(flat)
+                    return '\n'.join(result)
+                elif isinstance(val, list):
+                    result = []
+                    for v in val:
+                        flat = flatten_section(v)
+                        if flat:
+                            result.append(flat)
+                    return '\n'.join(result)
+                return ""
+
+            default_sections = {k: "" for k in canonical_keys}
             if isinstance(sections, dict):
-                default_sections.update(sections)
+                # For each canonical key, look for synonyms and flatten
+                for canon, synonyms in canonical_keys.items():
+                    found = False
+                    for syn in synonyms:
+                        for key in sections:
+                            if key.lower() == syn:
+                                val = flatten_section(sections[key])
+                                if val:
+                                    default_sections[canon] = val
+                                    found = True
+                                    break
+                        if found:
+                            break
+            # If all sections are empty, fallback
+            if all(not v.strip() for v in default_sections.values()):
+                logger.warning("LLM returned empty or invalid sections, falling back to regex extraction.")
+                return self._simple_section_extraction(raw_text)
             return default_sections
         except Exception as e:
             logger.error(f"Failed to extract sections with LLM: {e}")
             logger.debug(f"Attempting simple text extraction as fallback...")
-            # Fallback: try to find sections by headers
             return self._simple_section_extraction(raw_text)
 
     def _simple_section_extraction(self, text: str) -> dict:
-        """Simple regex-based section extraction as fallback."""
+        """Regex-based section extraction supporting numbered and named headers."""
         import re
-        sections = {"abstract": "", "methodology": "",
-                    "experiments": "", "results": ""}
+        sections = {"abstract": "", "methodology": "", "experiments": "", "results": ""}
 
-        # Try to find abstract
-        abstract_match = re.search(
-            r'(?:Abstract|ABSTRACT)[:\s]+(.*?)(?=\n\n|\n[A-Z])', text, re.DOTALL)
-        if abstract_match:
-            sections['abstract'] = abstract_match.group(1).strip()[:1000]
+        # Canonical mapping and keyword heuristics (compatible with decontextualisation logic)
+        section_map = {
+            'abstract': 'abstract',
+            'introduction': None,  # skip
+            'background': None,
+            'related work': None,
+            'system overview': 'methodology',
+            'framework': 'methodology',
+            'methodology': 'methodology',
+            'methods': 'methodology',
+            'approach': 'methodology',
+            'implementation': 'methodology',
+            'setup': 'methodology',
+            'procedure': 'methodology',
+            'utilizing': 'methodology',
+            'training': 'methodology',
+            'model training': 'methodology',
+            'experiments': 'experiments',
+            'experiment': 'experiments',
+            'evaluation': 'experiments',
+            'analysis': 'experiments',
+            'study': 'experiments',
+            'case study': 'experiments',
+            'empirical study': 'experiments',
+            'experimentation': 'experiments',
+            'results': 'results',
+            'findings': 'results',
+            'outcomes': 'results',
+            'discussion': 'results',
+            'conclusion': 'results',
+            'summary': 'results',
+        }
 
+        # Heuristic keyword lists for fuzzy matching
+        methodology_keywords = [
+            'method', 'approach', 'framework', 'system overview', 'implementation', 'setup', 'procedure', 'utiliz', 'train', 'model training'
+        ]
+        experiments_keywords = [
+            'experiment', 'evaluation', 'analysis', 'study', 'case study', 'empirical', 'experimentation', 'robustness'
+        ]
+        results_keywords = [
+            'result', 'finding', 'outcome', 'discussion', 'conclusion', 'summary'
+        ]
+
+        # Regex for numbered or named section headers (robust to e.g. '4.1 Model Training', '4 Utilizing ...')
+        header_pattern = re.compile(r'^(\d+(?:\.\d+)*[\.)]?\s+)?([A-Z][A-Za-z0-9 \-/]+)$', re.MULTILINE)
+
+        # Find all section headers and their positions
+        matches = list(header_pattern.finditer(text))
+        if not matches:
+            # fallback: try to find abstract only
+            abstract_match = re.search(r'(?i)abstract[:\s\n]+(.*?)(?=\n\n|\n[A-Z])', text, re.DOTALL)
+            if abstract_match:
+                sections['abstract'] = abstract_match.group(1).strip()[:2000]
+            else:
+                # fallback: take first 1000 chars from top of document as abstract
+                sections['abstract'] = text[:1000].strip()
+            return sections
+
+        # Build a list of (header, start, end)
+        section_spans = []
+        for i, match in enumerate(matches):
+            header_text = match.group(2).strip()
+            start = match.end()
+            end = matches[i+1].start() if i+1 < len(matches) else len(text)
+            section_spans.append((header_text, start, end))
+
+        # Assign content to canonical sections using both direct mapping and keyword heuristics
+        for header_text, start, end in section_spans:
+            header_lower = header_text.lower()
+            canonical = section_map.get(header_lower)
+            content = text[start:end].strip()
+            if canonical:
+                sections[canonical] += content + '\n'
+            else:
+                # Fuzzy keyword mapping for non-exact headers
+                if header_lower == 'abstract':
+                    sections['abstract'] = content[:2000]
+                    continue
+                # Methodology
+                if any(kw in header_lower for kw in methodology_keywords):
+                    sections['methodology'] += content + '\n'
+                    continue
+                # Experiments
+                if any(kw in header_lower for kw in experiments_keywords):
+                    sections['experiments'] += content + '\n'
+                    continue
+                # Results
+                if any(kw in header_lower for kw in results_keywords):
+                    sections['results'] += content + '\n'
+
+        # Truncate to reasonable length (more for methodology/experiments)
+        for k in sections:
+            if k in ("methodology", "experiments"):
+                sections[k] = sections[k][:8000]
+            else:
+                sections[k] = sections[k][:4000]
         return sections
-
-    def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> dict:
-        """
-        Recursively extract numeric metrics from nested dictionaries.
-
-        Args:
-            data: Nested dictionary (e.g., from complete_results.json)
-            prefix: Prefix for metric names
-
-        Returns:
-            Flat dictionary of metric_name: value
-        """
-        metrics = {}
 
         for key, value in data.items():
             current_key = f"{prefix}/{key}" if prefix else key

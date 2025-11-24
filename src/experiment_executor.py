@@ -238,7 +238,8 @@ class ExperimentExecutor:
             try:
                 with open(main_script, 'r', encoding='utf-8') as f:
                     code = f.read()
-                    import_lines = [line for line in code.splitlines() if line.strip().startswith('import') or line.strip().startswith('from')]
+                    import_lines = [line for line in code.splitlines() if line.strip(
+                    ).startswith('import') or line.strip().startswith('from')]
                     for line in import_lines:
                         if 'numpy' in line and 'numpy' not in dependencies:
                             dependencies.append('numpy')
@@ -249,7 +250,8 @@ class ExperimentExecutor:
                         if 'torchvision' in line and 'torchvision' not in dependencies:
                             dependencies.append('torchvision')
             except Exception as e:
-                self.logger.warning(f"Error auto-detecting dependencies from entry script: {e}")
+                self.logger.warning(
+                    f"Error auto-detecting dependencies from entry script: {e}")
 
         if language == 'python':
             req_files = [
@@ -264,7 +266,8 @@ class ExperimentExecutor:
                 req_file = path / req_name
                 if req_file.exists():
                     found_req = True
-                    self.logger.info(f"✓ Found requirements file: {req_file.name}")
+                    self.logger.info(
+                        f"✓ Found requirements file: {req_file.name}")
                     try:
                         with open(req_file, 'r') as f:
                             for line in f:
@@ -274,7 +277,8 @@ class ExperimentExecutor:
                                     if dep and dep not in dependencies:
                                         dependencies.append(dep)
                     except Exception as e:
-                        self.logger.warning(f"Error reading {req_file.name}: {e}")
+                        self.logger.warning(
+                            f"Error reading {req_file.name}: {e}")
 
             setup_file = path / 'setup.py'
             if setup_file.exists():
@@ -282,7 +286,8 @@ class ExperimentExecutor:
                     with open(setup_file, 'r') as f:
                         content = f.read()
                         if 'install_requires' in content:
-                            self.logger.debug("Found install_requires in setup.py")
+                            self.logger.debug(
+                                "Found install_requires in setup.py")
                 except Exception as e:
                     self.logger.warning(f"Error reading setup.py: {e}")
 
@@ -294,7 +299,8 @@ class ExperimentExecutor:
                         with open(readme_path, 'r', encoding='utf-8') as f:
                             readme = f.read().lower()
                             if 'pytorch' in readme or 'torchvision' in readme:
-                                self.logger.info("✓ README mentions PyTorch, adding torch and torchvision to dependencies")
+                                self.logger.info(
+                                    "✓ README mentions PyTorch, adding torch and torchvision to dependencies")
                                 if 'torch' not in dependencies:
                                     dependencies.append('torch')
                                 if 'torchvision' not in dependencies:
@@ -406,6 +412,15 @@ class ExperimentExecutor:
         """
         logger.info(f"Setting up environment for {codebase_path}")
 
+        # Always install pytest in the venv if this is the TextAttack repo
+        def _should_force_pytest_install(path: Path) -> bool:
+            # Heuristic: if 'textattack' in path or package folder exists
+            if 'textattack' in str(path).lower():
+                return True
+            if (path / 'textattack').is_dir():
+                return True
+            return False
+
         # Check if virtual environment exists
         venv_path = codebase_path / 'venv'
         venv_exists = venv_path.exists()
@@ -450,12 +465,12 @@ class ExperimentExecutor:
                 logger.error(f"Failed to create virtual environment: {e}")
                 return False
 
+
         # Install dependencies if not already installed
         if dependencies and not venv_ready:
             python_executable, _, _ = _get_venv_paths(venv_path)
             logger.info(f"Installing {len(dependencies)} dependencies...")
-            logger.info(
-                "⏳ This may take a few minutes depending on package sizes...")
+            logger.info("⏳ This may take a few minutes depending on package sizes...")
             logger.info(f"   (Timeout: 30 minutes)")
 
             for dep in dependencies:
@@ -473,14 +488,52 @@ class ExperimentExecutor:
                     logger.error(f"✗ Failed to install {dep}: {e.stderr}")
                     return False
                 except subprocess.TimeoutExpired:
-                    logger.error(
-                        f"✗ Timeout installing {dep} after 30 minutes")
+                    logger.error(f"✗ Timeout installing {dep} after 30 minutes")
                     return False
             logger.info("✓ All dependencies installed successfully")
-            return True
 
-        logger.info(
-            "✓ Environment setup complete (venv cached if previously installed)")
+        # Always install the repo as a package if setup.py or pyproject.toml is present
+        python_executable, _, _ = _get_venv_paths(venv_path)
+        setup_py = codebase_path / 'setup.py'
+        pyproject = codebase_path / 'pyproject.toml'
+        if setup_py.exists() or pyproject.exists():
+            logger.info("Installing repo as a package in its venv (pip install -e .)")
+            try:
+                result = subprocess.run(
+                    [str(python_executable), '-m', 'pip', 'install', '-e', str(codebase_path)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=600
+                )
+                logger.info("✓ Installed repo as editable package")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"✗ Failed to install repo as package: {e.stderr}")
+                return False
+            except subprocess.TimeoutExpired:
+                logger.error(f"✗ Timeout installing repo as package after 10 minutes")
+                return False
+
+        # If this is the TextAttack repo, always install pytest in its venv
+        if _should_force_pytest_install(codebase_path):
+            logger.info("Detected TextAttack repo, ensuring pytest is installed in venv...")
+            try:
+                result = subprocess.run(
+                    [str(python_executable), '-m', 'pip', 'install', 'pytest'],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                logger.info("✓ Installed pytest in TextAttack venv")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"✗ Failed to install pytest in TextAttack venv: {e.stderr}")
+                return False
+            except subprocess.TimeoutExpired:
+                logger.error(f"✗ Timeout installing pytest in TextAttack venv after 5 minutes")
+                return False
+
+        logger.info("✓ Environment setup complete (venv cached if previously installed)")
         return True
 
     # ============================================================================
@@ -513,55 +566,56 @@ class ExperimentExecutor:
         script_path = config.script_path.resolve()
 
 
-        # Robust venv detection: search for venv in working_dir and subdirs
-        def find_venv_path(base_dir: Path, max_depth: int = 2) -> Optional[Path]:
-            # Check base_dir/venv first
-            candidate = base_dir / 'venv'
-            if candidate.exists():
-                return candidate
-            # Search subdirectories up to max_depth
-            for root, dirs, files in os.walk(base_dir):
-                rel_depth = Path(root).relative_to(base_dir).parts
-                if len(rel_depth) > max_depth:
-                    continue
-                if 'venv' in dirs:
-                    venv_candidate = Path(root) / 'venv'
-                    if (venv_candidate / 'bin' / 'python').exists() or (venv_candidate / 'Scripts' / 'python.exe').exists():
-                        return venv_candidate
+
+        # Robust venv detection: prefer repo venvs (venv or .venv), fallback to workspace .venv, then system python
+        def find_python_in_venvs(base_dirs):
+            for base_dir in base_dirs:
+                for venv_name in ['venv', '.venv']:
+                    venv_path = base_dir / venv_name
+                    if platform.system() == 'Windows':
+                        py = venv_path / 'Scripts' / 'python.exe'
+                    else:
+                        py = venv_path / 'bin' / 'python'
+                    if py.exists() and os.access(py, os.X_OK):
+                        return str(py)
             return None
 
+        workspace_root = Path(__file__).parent.parent
+        workspace_venv_python = workspace_root / '.venv' / 'bin' / 'python'
+        python_cmd = None
 
-        # For cloned_repos: use local .venv if present, else workspace .venv
-        workspace_venv_python = Path(__file__).parent.parent / '.venv' / 'bin' / 'python'
-        if str(config.working_dir).startswith(str(Path(__file__).parent.parent / 'cloned_repos')):
-            local_venv_path = Path(config.working_dir) / '.venv'
-            if (local_venv_path / 'bin' / 'python').exists():
-                python_cmd = str(local_venv_path / 'bin' / 'python')
-                self.logger.info(f"[run_experiment] Using local .venv Python for cloned_repo: {python_cmd}")
-            else:
+        # If running in cloned_repos, prefer venvs in repo root and working dir
+        if str(config.working_dir).startswith(str(workspace_root / 'cloned_repos')):
+            repo_root = Path(config.working_dir)
+            # Try working dir and its parent (repo root)
+            python_cmd = find_python_in_venvs([repo_root, repo_root.parent])
+            if python_cmd:
+                self.logger.info(f"[run_experiment] Using repo venv Python: {python_cmd}")
+            elif workspace_venv_python.exists():
                 python_cmd = str(workspace_venv_python)
-                self.logger.info(f"[run_experiment] Forcing workspace .venv Python for cloned_repo: {python_cmd}")
-        else:
-            venv_path = find_venv_path(config.working_dir)
-            if venv_path:
-                bin_dir = venv_path / ('Scripts' if platform.system() == 'Windows' else 'bin')
-                python3_path = bin_dir / 'python3'
-                python_path = bin_dir / 'python'
-                python_executable = None
-                if python3_path.exists() and os.access(python3_path, os.X_OK):
-                    python_executable = python3_path.resolve()
-                elif python_path.exists() and os.access(python_path, os.X_OK):
-                    python_executable = python_path.resolve()
-                if python_executable:
-                    python_cmd = str(python_executable)
-                    self.logger.info(f"[run_experiment] Using venv Python: {python_cmd}")
-                else:
-                    python_cmd = _get_python_executable()
-                    self.logger.info(f"[run_experiment] No venv found, using workspace Python: {python_cmd}")
+                self.logger.info(f"[run_experiment] Fallback to workspace .venv Python: {python_cmd}")
             else:
                 python_cmd = _get_python_executable()
-                self.logger.info(f"[run_experiment] No venv found, using workspace Python: {python_cmd}")
-        cmd = [python_cmd, str(script_path)] + config.args
+                self.logger.info(f"[run_experiment] Fallback to system Python: {python_cmd}")
+        else:
+            # For non-cloned_repos, try venvs in working dir, then workspace venv, then system
+            python_cmd = find_python_in_venvs([Path(config.working_dir)])
+            if python_cmd:
+                self.logger.info(f"[run_experiment] Using venv Python: {python_cmd}")
+            elif workspace_venv_python.exists():
+                python_cmd = str(workspace_venv_python)
+                self.logger.info(f"[run_experiment] Fallback to workspace .venv Python: {python_cmd}")
+            else:
+                python_cmd = _get_python_executable()
+                self.logger.info(f"[run_experiment] Fallback to system Python: {python_cmd}")
+
+
+        # Detect if this is a test script (pytest)
+        is_test_script = (
+            'tests' in str(script_path.parent)
+            or script_path.name.startswith('test_')
+            or script_path.parent.name.startswith('test')
+        )
 
         # Prepare environment variables
         env = os.environ.copy()
@@ -572,22 +626,39 @@ class ExperimentExecutor:
 
         try:
             import subprocess
-            self.logger.info(f"[run_experiment] Running subprocess: {' '.join(cmd)}")
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(working_dir),
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
+            import threading
+            import json as _json
+            if is_test_script:
+                # Run with pytest and capture output
+                pytest_cmd = [python_cmd, '-m', 'pytest', str(script_path), '--maxfail=100', '--disable-warnings', '-q', '--tb=short']
+                self.logger.info(f"[run_experiment] Running pytest: {' '.join(pytest_cmd)}")
+                proc = subprocess.Popen(
+                    pytest_cmd,
+                    cwd=str(working_dir),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
+            else:
+                cmd = [python_cmd, str(script_path)] + config.args
+                self.logger.info(f"[run_experiment] Running subprocess: {' '.join(cmd)}")
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(working_dir),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
+
             last_log_time = start_time
             poll_interval = 10  # seconds
             log_interval = 300  # 5 minutes
             stdout_lines = []
             stderr_lines = []
-            import threading
             def stream_output(pipe, lines, is_stderr=False):
                 for line in iter(pipe.readline, ''):
                     lines.append(line)
@@ -617,8 +688,38 @@ class ExperimentExecutor:
             self.logger.info(f"[run_experiment] End time: {end_time_str}")
             self.logger.info(f"[run_experiment] Duration: {duration:.2f} seconds")
 
-            # Try to parse any JSON output files
+            # If this was a pytest run, parse results and write complete_results.json
             outputs = self._collect_outputs(working_dir)
+            if is_test_script:
+                import re
+                # Parse pytest output for test results summary
+                passed = failed = errors = 0
+                for line in stdout_lines + stderr_lines:
+                    # e.g. "3 passed, 1 failed in 0.12s"
+                    m = re.search(r'(\d+)\s+passed', line)
+                    if m:
+                        passed += int(m.group(1))
+                    m = re.search(r'(\d+)\s+failed', line)
+                    if m:
+                        failed += int(m.group(1))
+                    m = re.search(r'(\d+)\s+error', line)
+                    if m:
+                        errors += int(m.group(1))
+                summary = {
+                    "tests_passed": passed,
+                    "tests_failed": failed,
+                    "tests_errored": errors,
+                    "success": (failed == 0 and errors == 0),
+                    "duration": duration,
+                }
+                # Write complete_results.json for EVALLab result evaluator
+                try:
+                    with open(str(working_dir / 'complete_results.json'), 'w') as f:
+                        _json.dump(summary, f, indent=2)
+                    outputs['complete_results.json'] = summary
+                    self.logger.info(f"[run_experiment] Wrote complete_results.json: {summary}")
+                except Exception as e:
+                    self.logger.error(f"[run_experiment] Failed to write complete_results.json: {e}")
 
             # Log full stdout and stderr for debugging
             if proc.returncode != 0:

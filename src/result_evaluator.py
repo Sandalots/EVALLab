@@ -123,7 +123,7 @@ class ResultEvaluator:
 
     def load_all_experiment_results(self, codebase_path: Path) -> List[ExperimentSet]:
         """
-        Load results from all output directories.
+        Load results from all output directories, or from the root if present.
 
         Args:
             codebase_path: Path to codebase
@@ -133,15 +133,33 @@ class ResultEvaluator:
         """
         experiment_sets = []
 
+        # Check for complete_results.json in the root of the codebase
+        root_results_path = codebase_path / "complete_results.json"
+        if root_results_path.exists():
+            try:
+                with open(root_results_path, 'r') as f:
+                    results = json.load(f)
+                total_configs = len(results)
+                total_metrics = self._count_metrics_in_results(results)
+                experiment_sets.append(ExperimentSet(
+                    name="root",
+                    results=results,
+                    total_configs=total_configs,
+                    total_metrics=total_metrics
+                ))
+                logger.info(f"✓ Loaded root: {total_configs} configs, {total_metrics} metrics")
+            except Exception as e:
+                logger.error(f"Failed to load root complete_results.json: {e}")
+
         # Dynamically discover output directories with complete_results.json
         output_dirs = []
         for item in codebase_path.iterdir():
             if item.is_dir() and (item / "complete_results.json").exists():
                 output_dirs.append(item.name)
 
-        if not output_dirs:
+        if not experiment_sets and not output_dirs:
             logger.warning(
-                "No output directories with complete_results.json found")
+                "No output directories or root complete_results.json found")
             return []
 
         for dir_name in output_dirs:
@@ -342,6 +360,18 @@ JSON:"""
             Dict of "experiment_set/config/retriever/metric" -> value
         """
         metrics = {}
+
+        # Check for complete_results.json in the root of the codebase
+        root_results_path = codebase_path / "complete_results.json"
+        if root_results_path.exists():
+            try:
+                with open(root_results_path, 'r') as f:
+                    results = json.load(f)
+                extracted = self._extract_metrics_from_nested_dict(results, prefix="root")
+                metrics.update(extracted)
+                logger.info(f"✓ Extracted {len(extracted)} baseline metrics from root/complete_results.json")
+            except Exception as e:
+                logger.error(f"Failed to extract from {root_results_path}: {e}")
 
         # Dynamically discover output directories
         output_dirs = []
