@@ -12,7 +12,7 @@ experiment:
   timeout: 3600
   max_retries: 2
   use_venv: true
-  random_seed: 42 
+  random_seed: 47 
   set_environment_seeds: true 
 
 evaluation:
