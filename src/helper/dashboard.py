@@ -107,18 +107,26 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     median_abs_dev = f"{df['percent_difference'].abs().median():.2f}%" if df is not None and 'percent_difference' in df else 'N/A'
     std_dev = f"{df['percent_difference'].std():.2f}%" if df is not None and 'percent_difference' in df else 'N/A'
 
+    # Style success rate: green >=80%, orange 50-80%, red <50%
+    if success_rate >= 80:
+        sr_class = 'success-high'
+    elif success_rate >= 50:
+        sr_class = 'success-mid'
+    else:
+        sr_class = 'success-low'
+
     metrics_html = f'''
     <div class="summary">
         <h3>EVALLab Performance Summary</h3>
-        <div class="metric"><div>Total Comparisons</div><div class="metric-value">{total_comparisons}</div></div>
-        <div class="metric"><div>Passing</div><div class="metric-value status-pass">{passing}</div></div>
-        <div class="metric"><div>Failing</div><div class="metric-value status-fail">{failing}</div></div>
-        <div class="metric"><div>Success Rate</div><div class="metric-value">{success_rate:.1f}%</div></div>
-        <div class="metric"><div>Mean Abs. Deviation</div><div class="metric-value">{mean_abs_dev}</div></div>
-        <div class="metric"><div>Median Abs. Deviation</div><div class="metric-value">{median_abs_dev}</div></div>
-        <div class="metric"><div>Std Dev of Deviations</div><div class="metric-value">{std_dev}</div></div>
-        <div class="metric"><div>Total Runtime</div><div class="metric-value">{'{:.2f} seconds'.format(runtime_seconds) if runtime_seconds is not None else 'N/A'}</div></div>
-        <div class="metric"><div>Peak Memory Usage</div><div class="metric-value">{'{:.2f} MB'.format(peak_memory_mb) if peak_memory_mb is not None else 'N/A'}</div></div>
+        <div class="metric"><div><u>Total Metric Comparisons</u></div><div class="metric-value">{total_comparisons}</div></div>
+        <div class="metric"><div><u>Passing Metrics</u></div><div class="metric-value status-pass">{passing}</div></div>
+        <div class="metric"><div><u>Failing Metrics</u></div><div class="metric-value status-fail">{failing}</div></div>
+        <div class="metric"><div><u>Success Rate</u></div><div class="metric-value {sr_class}">{success_rate:.1f}%</div></div>
+        <div class="metric"><div><u>Mean Abs. Deviation</u></div><div class="metric-value">{mean_abs_dev}</div></div>
+        <div class="metric"><div><u>Median Abs. Deviation</u></div><div class="metric-value">{median_abs_dev}</div></div>
+        <div class="metric"><div><u>Std Dev of Deviations</u></div><div class="metric-value">{std_dev}</div></div>
+        <div class="metric"><div><u>Total EVALLab Runtime</u></div><div class="metric-value">{'{:.2f} seconds'.format(runtime_seconds) if runtime_seconds is not None else 'N/A'}</div></div>
+        <div class="metric"><div><u>Peak EVALLab Memory Usage</u></div><div class="metric-value">{'{:.2f} MB'.format(peak_memory_mb) if peak_memory_mb is not None else 'N/A'}</div></div>
     </div>
     '''
 
@@ -155,7 +163,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         try:
             with open(files['agent_log'], 'r', encoding='utf-8') as logf:
                 log_content = logf.read()
-            log_html = f'''<div class="agent-log"><h3>EVALLab Agent Execution Log for this Research Paper</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide Agent Log</summary><pre style="font-size:12px;">{html_module.escape(log_content)}</pre></details></div>'''
+            log_html = f'''<div class="agent-log"><h3>EVALLab Agent Execution Log for this Research Paper</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide Agent Log</summary><pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', 'monospace'; font-size: 15px; white-space: pre; background: #222; color: #eee; border-radius: 6px; padding: 12px; overflow-x: auto;">{html_module.escape(log_content)}</pre></details></div>'''
         except Exception as e:
             log_html = f'<div class="agent-log"><b>Could not load agent log: {e}</b></div>'
 
@@ -178,6 +186,9 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
             .metric-value {{ font-weight: bold; color: #3498db; font-size: 24px; }}
             .status-pass {{ color: #27ae60; font-weight: bold; }}
             .status-fail {{ color: #e74c3c; font-weight: bold; }}
+            .success-high {{ color: #27ae60; font-weight: bold; }}
+            .success-mid {{ color: #e67e22; font-weight: bold; }}
+            .success-low {{ color: #e74c3c; font-weight: bold; }}
             .diff-pos {{ color: #2980b9; }}
             .diff-neg {{ color: #e67e22; }}
             .viz-section {{ margin: 30px 0; text-align: center; }}

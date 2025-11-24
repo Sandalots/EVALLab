@@ -1275,7 +1275,7 @@ Provide a concise analysis (3-4 paragraphs)."""
                       [within_threshold, outside_threshold],
                       color=['#2ecc71', '#e74c3c'])
         ax.set_ylabel('Number of Metrics', fontsize=12)
-        ax.set_title(f'EVALLab Reproducibility Performance\nResearch Paper: {paper_name}',
+        ax.set_title(f'EVALLab Reproducibility Performance',
                      fontsize=14, fontweight='bold')
 
         # Add percentage labels on bars
