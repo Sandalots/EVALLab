@@ -69,12 +69,12 @@ class RepoRetriever:
                 return None
             # Check if it's a local path
             elif local_path.exists():
-                # If supplementary_material, prefer 'code' subdir if present
-                if local_path.name == 'supplementary_material':
+                # If supplementary_material or decontextualization, prefer 'code' subdir if present
+                if local_path.name in ['supplementary_material', 'decontextualization']:
                     code_dir = local_path / 'code'
                     if code_dir.exists() and code_dir.is_dir():
                         logger.info(
-                            f"✓ Using 'code' directory in supplementary_material: {code_dir}")
+                            f"✓ Using 'code' directory in {local_path.name}: {code_dir}")
                         return code_dir
                 logger.info(f"✓ Using user-provided codebase: {local_path}")
                 return local_path
@@ -125,10 +125,13 @@ class RepoRetriever:
         if not self.paper_source_dir.exists():
             return None
 
-        # Check common structures
+
+        # Check common structures for both supplementary_material and decontextualization
         candidates = [
             self.paper_source_dir / "supplementary_material" / "code",
             self.paper_source_dir / "supplementary_material",
+            self.paper_source_dir / "decontextualization" / "code",
+            self.paper_source_dir / "decontextualization",
             self.paper_source_dir / "code",
             self.paper_source_dir
         ]
