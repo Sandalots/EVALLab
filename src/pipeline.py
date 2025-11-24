@@ -315,7 +315,7 @@ class ReproductionAgent:
 
     def extract_json(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """
-        Generate a response and parse it as JSON.
+        Generate a response and parse it as JSON, robust to LLM output errors and preambles.
 
         Args:
             prompt: User prompt
@@ -327,21 +327,58 @@ class ReproductionAgent:
         import re
         response = self.generate(prompt, system_prompt, temperature=0.1)
 
+        # Remove lines that are just '...'
+        response = '\n'.join(line for line in response.splitlines() if line.strip() != '...')
+        # Remove leading/trailing ellipses
+        response = re.sub(r'^\s*\.\.\.+', '', response)
+        response = re.sub(r'\.\.\.+\s*$', '', response)
+
+        # Always skip to the first '{' (ignore any preamble)
+        first_brace = response.find('{')
+        if first_brace != -1:
+            response = response[first_brace:]
+
         # Try to extract JSON from markdown code blocks first
         json_match = re.search(
             r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
         if json_match:
             response = json_match.group(1)
 
-        # Try to find JSON object in the response
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            response = json_match.group(0)
+        # Try to find the first valid JSON object in the response using a stack-based approach
+        def extract_first_json_object(text):
+            start = text.find('{')
+            if start == -1:
+                return None
+            stack = []
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    stack.append(i)
+                elif text[i] == '}':
+                    stack.pop()
+                    if not stack:
+                        return text[start:i+1]
+            return None
 
+        json_candidate = extract_first_json_object(response)
+        if json_candidate:
+            response = json_candidate
+
+
+        # Remove lines that are just '...'
+        cleaned_response = '\n'.join(line for line in response.splitlines() if line.strip() != '...')
+        # Remove inline or trailing ellipsis artifacts (e.g., , ... or ...)
+        cleaned_response = re.sub(r',?\s*\.\.\.(,)?', lambda m: ',' if m.group(1) else '', cleaned_response)
         # Clean control characters that break JSON
-        cleaned_response = re.sub(r'[\x00-\x1F\x7F]', '', response)
+        cleaned_response = re.sub(r'[\x00-\x1F\x7F]', '', cleaned_response)
         # Strip trailing periods, commas, and whitespace
         cleaned_response = re.sub(r'[\s\.,]+$', '', cleaned_response)
+
+        # Auto-close unbalanced braces if needed (for truncated LLM output)
+        open_braces = cleaned_response.count('{')
+        close_braces = cleaned_response.count('}')
+        if open_braces > close_braces:
+            cleaned_response += '}' * (open_braces - close_braces)
+
         try:
             return json.loads(cleaned_response)
         except json.JSONDecodeError:
@@ -794,8 +831,13 @@ class ReproductionAgent:
             # Canonical keys and synonyms
             canonical_keys = {
                 "abstract": ["abstract"],
-                "methodology": ["methodology", "methods", "approach", "system overview", "framework", "implementation", "setup", "procedure"],
-                "experiments": ["experiments", "experiment", "evaluation", "analysis", "study", "case study", "empirical study", "experimentation"],
+                "methodology": [
+                    "methodology", "methods", "approach", "system overview", "framework", "implementation", "setup", "procedure",
+                    "utilizing", "training", "model training", "attack recipes", "model architecture", "model details", "pipeline", "algorithm", "utilizing textattack to improve nlp models", "model training", "data augmentation", "adversarial training"
+                ],
+                "experiments": [
+                    "experiments", "experiment", "evaluation", "analysis", "study", "case study", "empirical study", "experimentation", "robustness", "evaluating robustness of custom models", "experiment details", "experiment setup", "experiment results"
+                ],
                 "results": ["results", "findings", "outcomes", "discussion", "conclusion", "summary"]
             }
             def flatten_section(val):
@@ -837,6 +879,12 @@ class ReproductionAgent:
             if all(not v.strip() for v in default_sections.values()):
                 logger.warning("LLM returned empty or invalid sections, falling back to regex extraction.")
                 return self._simple_section_extraction(raw_text)
+            # If any section is missing, merge in regex fallback for that section
+            fallback_sections = self._simple_section_extraction(raw_text)
+            for k in default_sections:
+                if not default_sections[k].strip() and fallback_sections.get(k, "").strip():
+                    logger.info(f"Merging fallback content for missing section: {k}")
+                    default_sections[k] = fallback_sections[k]
             return default_sections
         except Exception as e:
             logger.error(f"Failed to extract sections with LLM: {e}")
