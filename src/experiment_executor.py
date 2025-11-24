@@ -609,6 +609,10 @@ class ExperimentExecutor:
                 python_cmd = _get_python_executable()
                 self.logger.info(f"[run_experiment] Fallback to system Python: {python_cmd}")
 
+        # Always resolve python_cmd to absolute path if possible
+        if python_cmd and not os.path.isabs(python_cmd):
+            python_cmd = str(Path(python_cmd).resolve())
+
 
         # Detect if this is a test script (pytest)
         is_test_script = (
