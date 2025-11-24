@@ -72,18 +72,21 @@ class PaperParser:
         return content
 
     def _extract_github_urls(self, text: str) -> List[str]:
-        """Extract GitHub repository URLs from text, cleaning trailing reference symbols/punctuation."""
+        """Extract GitHub repository URLs from text, cleaning trailing reference symbols/punctuation and .N artifacts."""
         # Join lines to handle split URLs
         text_joined = re.sub(r'\s*\n\s*', '', text)
         urls = self.github_pattern.findall(text_joined)
         # Clean up URLs (remove any whitespace)
         urls = [re.sub(r'\s+', '', url) for url in urls]
-        # Remove trailing punctuation, reference numbers, or brackets (e.g., .1, [1], etc.)
         cleaned_urls = []
         for url in urls:
             # Remove trailing characters that are not valid in GitHub repo URLs
-            url = re.sub(r'[\.,;:!?\)\]\}]+$', '', url)  # Remove trailing punctuation
-            url = re.sub(r'(\.[0-9]+|\[[0-9]+\])$', '', url)  # Remove trailing .1 or [1]
+            # Remove trailing .N, .N., .N], .N), .N}, .N; etc. (where N is one or more digits)
+            url = re.sub(r'(\.[0-9]+([\]\)\}}\.,;:!])*)+$', '', url)
+            # Remove trailing punctuation
+            url = re.sub(r'[\.,;:!\)\]\}]+$', '', url)
+            # Remove trailing reference numbers in brackets (e.g., [1], [12])
+            url = re.sub(r'\[[0-9]+\]$', '', url)
             cleaned_urls.append(url)
         # Remove duplicates while preserving order
         return list(dict.fromkeys(cleaned_urls))
