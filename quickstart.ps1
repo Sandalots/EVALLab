@@ -17,6 +17,15 @@ if (Test-Path $venvActivate) {
     exit 1
 }
 
+# ollama serve in the background
+$ollamaProcess = Get-Process -Name "ollama" -ErrorAction Silently
+if (-not $ollamaProcess) {
+    Write-Host "Starting ollama server..."
+    Start-Process "ollama" -ArgumentList "serve"
+} else {
+    Write-Host "Ollama server is already running."
+}
+
 # Upgrade pip
 python -m pip install --upgrade pip
 

@@ -7,6 +7,14 @@ if [ ! -d ".venv" ]; then
   python3 -m venv .venv
 fi
 
+# ollama serve in the background
+if ! pgrep -f "ollama serve" > /dev/null; then
+  echo "Starting ollama server..."
+  ollama serve &
+else
+  echo "Ollama server is already running."
+fi
+
 # Activate venv
 source .venv/bin/activate
 
@@ -60,3 +68,5 @@ if [ ! -d "papers/codebases/supplementary_material" ]; then
 else
     python3 run_EVALLab.py --paper papers/decontextualisation.pdf --code ./papers/codebases/supplementary_material/
 fi
+
+./open_visualizations.sh
