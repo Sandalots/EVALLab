@@ -38,6 +38,7 @@ def generate_visualizations_index_html(visualizations_root: Path) -> str:
     html = f"""<!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>EVALLab Dashboard</title>
     <style>
         body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
@@ -163,7 +164,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         try:
             with open(files['agent_log'], 'r', encoding='utf-8') as logf:
                 log_content = logf.read()
-            log_html = f'''<div class="agent-log"><h3>EVALLab Agent Execution Log for this Research Paper</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide EVALLab Log</summary><pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', 'monospace'; font-size: 15px; white-space: pre; background: #222; color: #eee; border-radius: 6px; padding: 12px; overflow-x: auto;">{html_module.escape(log_content)}</pre></details></div>'''
+            log_html = f'''<div class="agent-log"><h3>EVALLab Execution Log for this Research Paper:</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide EVALLab Log</summary><pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', 'monospace'; font-size: 15px; white-space: pre; background: #222; color: #eee; border-radius: 6px; padding: 12px; overflow-x: auto;">{html_module.escape(log_content)}</pre></details></div>'''
         except Exception as e:
             log_html = f'<div class="agent-log"><b>Could not load agent log: {e}</b></div>'
 
