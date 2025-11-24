@@ -52,12 +52,12 @@ def generate_visualizations_index_html(visualizations_root: Path) -> str:
 </head>
 <body>
     <h1>EVALLab Dashboard</h1>
-    <h2>All Papers: EVALLab's Reports</h2>
+    <h2>All Papers:</h2>
     <div class="paper-list">
         {''.join([
             f'<div class="paper-entry">'
             f'<h2>Research Paper: {d.name}</h2>'
-            f'<a href="{d.name}/visualizations.html">View Visualizations, Metrics & Logs for this research paper</a>'
+            f'<u><a href="{d.name}/visualizations.html">View Visualizations, Performance Metrics, Logs and Summaries for this research paper</a></u>'
             f'</div>' for d in paper_dirs if (d / 'visualizations.html').exists()
         ])}
     </div>
@@ -164,7 +164,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         try:
             with open(files['agent_log'], 'r', encoding='utf-8') as logf:
                 log_content = logf.read()
-            log_html = f'''<div class="agent-log"><h3>EVALLab Execution Log for this Research Paper:</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide EVALLab Log</summary><pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', 'monospace'; font-size: 15px; white-space: pre; background: #222; color: #eee; border-radius: 6px; padding: 12px; overflow-x: auto;">{html_module.escape(log_content)}</pre></details></div>'''
+            log_html = f'''<div class="agent-log"><h3>EVALLab Execution Log for this Research Paper:</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide EVALLab Log</summary><pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', 'monospace', 'Segoe UI Emoji', 'Noto Color Emoji'; font-size: 15px; white-space: pre; background: #222; color: #eee; border-radius: 6px; padding: 12px; overflow-x: auto;">{html_module.escape(log_content)}</pre></details></div>'''
         except Exception as e:
             log_html = f'<div class="agent-log"><b>Could not load agent log: {e}</b></div>'
 
