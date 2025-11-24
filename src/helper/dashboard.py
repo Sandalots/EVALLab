@@ -1,3 +1,9 @@
+import pandas as pd
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+
 def _build_metrics_table_rows(df):
     """
     Build HTML table rows for the metrics comparison table.
@@ -21,13 +27,6 @@ def _build_metrics_table_rows(df):
             f"</tr>"
         )
     return '\n'.join(rows)
-
-import pandas as pd
-import json
-import logging
-from datetime import datetime
-from pathlib import Path
-
 
 def generate_visualizations_index_html(visualizations_root: Path) -> str:
     """

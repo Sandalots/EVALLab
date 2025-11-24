@@ -11,6 +11,7 @@ fi
 if ! pgrep -f "ollama serve" > /dev/null; then
   echo "Starting ollama server..."
   ollama serve &
+
 else
   echo "Ollama server is already running."
 fi
@@ -29,11 +30,21 @@ if [ ! -d "papers/codebases/decontextualization" ]; then
 
   # check if user is linux or mac and has the curl command, download https://openreview.net/attachment?id=cK8YYMc65B&name=supplementary_material using curl and place it in papers/codebases/
   if [[ "$OSTYPE" == "linux-gnu"* || "$OSTYPE" == "darwin"* ]]; then
+
+    # check if user has the curl command
     if command -v curl &> /dev/null; then
       echo "Downloading Decontextualization codebase..."
+
+      # make the codebases dir if it doesn't exist yet
       mkdir -p papers/codebases/
+
+      # download the zipped codebase to the codebases dir
       curl -L -o papers/codebases/supplementary_material.zip "https://openreview.net/attachment?id=cK8YYMc65B&name=supplementary_material"
+
+      # unzip the codese
       unzip papers/codebases/supplementary_material.zip -d papers/codebases/
+
+      # remove the zip file
       rm papers/codebases/supplementary_material.zip
 
       # remove __MACOSX directory if it exists
