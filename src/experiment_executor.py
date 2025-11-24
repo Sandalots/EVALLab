@@ -584,8 +584,9 @@ class ExperimentExecutor:
         workspace_venv_python = workspace_root / '.venv' / 'bin' / 'python'
         python_cmd = None
 
-        # If running in cloned_repos, prefer venvs in repo root and working dir
-        if str(config.working_dir).startswith(str(workspace_root / 'cloned_repos')):
+        # If running in papers/codebases (formerly cloned_repos), prefer venvs in repo root and working dir
+        codebases_dir = workspace_root / 'papers' / 'codebases'
+        if str(config.working_dir).startswith(str(codebases_dir)):
             repo_root = Path(config.working_dir)
             # Try working dir and its parent (repo root)
             python_cmd = find_python_in_venvs([repo_root, repo_root.parent])

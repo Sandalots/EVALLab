@@ -62,10 +62,10 @@ class RepoRetriever:
                 logger.error(f"🛠️  MANUAL CLONE REQUIRED:")
                 logger.error(f"   Please run this command manually:")
                 logger.error(
-                    f"   git clone {normalized_url} {self.workspace_root}/cloned_repos/{normalized_url.split('/')[-1].replace('.git', '')}")
+                    f"   git clone {normalized_url} {self.workspace_root}/papers/codebases/{normalized_url.split('/')[-1].replace('.git', '')}")
                 logger.error(f"")
                 logger.error(
-                    f"   Then re-run EVALLab with: --code {self.workspace_root}/cloned_repos/{normalized_url.split('/')[-1].replace('.git', '')}")
+                    f"   Then re-run EVALLab with: --code {self.workspace_root}/papers/codebases/{normalized_url.split('/')[-1].replace('.git', '')}")
                 return None
             # Check if it's a local path
             elif local_path.exists():
@@ -217,7 +217,7 @@ class RepoRetriever:
             if repo_name.endswith('.git'):
                 repo_name = repo_name[:-4]
 
-            clone_dir = self.workspace_root / "cloned_repos" / repo_name
+            clone_dir = self.workspace_root / "papers" / "codebases" / repo_name
 
             # Skip if already cloned and looks valid
             if clone_dir.exists():
