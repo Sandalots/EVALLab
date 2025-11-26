@@ -107,7 +107,7 @@ class ResultEvaluator:
 </body>
 </html>
 """
-        with open(visualizations_root / 'visualizations.html', 'w') as f:
+        with open(visualizations_root / 'visualizations.html', 'w', encoding='utf-8') as f:
             f.write(html)
 
     def __init__(self, llm_client=None, threshold: float = 0.05):
@@ -1513,7 +1513,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         html_content = self._generate_visualization_index(
             generated_files, df, paper_name)
         html_path = output_dir / 'visualizations.html'
-        with open(html_path, 'w') as f:
+        with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         generated_files['index_html'] = html_path
 

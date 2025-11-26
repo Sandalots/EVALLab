@@ -336,7 +336,7 @@ def main():
             from src.helper.dashboard import generate_visualization_index_html
             html_content = generate_visualization_index_html(files, df, paper_name, output_dir)
             html_path = output_dir / 'visualizations.html'
-            with open(html_path, 'w') as f:
+            with open(html_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
 
         # Regenerate the top-level dashboard as well
