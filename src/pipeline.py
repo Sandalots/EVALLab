@@ -1073,6 +1073,26 @@ class ReproductionAgent:
 
         results = []
 
+
+        # Special handling: if this is a textattack codebase, run the smaller IMDB LSTM training script
+        if 'textattack' in str(codebase_info.path).lower():
+            train_script = codebase_info.path / 'examples' / 'train' / 'train_lstm_imdb_sentiment_classification.sh'
+            if train_script.exists():
+                logger.info(f"Running textattack train script: {train_script}")
+                config = ExperimentConfig(
+                    script_path=train_script,
+                    args=[],
+                    env_vars={},
+                    working_dir=codebase_info.path,
+                    timeout=self.config['experiment']['timeout']
+                )
+                result = self.experiment_executor.run_experiment(config)
+                results.append(result)
+                if result.success:
+                    logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
+                else:
+                    logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
+
         # Run priority scripts from README first
         for script_path, args in priority_scripts[:2]:  # Limit to 2
             logger.info(

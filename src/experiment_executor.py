@@ -1,3 +1,23 @@
+def ensure_tensorflow_hub(venv_python):
+    """Ensure tensorflow_hub and tensorflow are installed in the venv."""
+    import subprocess
+    check_code = (
+        "import importlib.util; "
+        "print(importlib.util.find_spec('tensorflow_hub') is not None); "
+        "print(importlib.util.find_spec('tensorflow') is not None)"
+    )
+    result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
+    lines = result.stdout.strip().splitlines()
+    tfhub_installed = lines[0].strip() == 'True' if lines else False
+    tf_installed = lines[1].strip() == 'True' if len(lines) > 1 else False
+    pkgs_to_install = []
+    if not tfhub_installed:
+        pkgs_to_install.append("tensorflow_hub")
+    if not tf_installed:
+        pkgs_to_install.append("tensorflow")
+    if pkgs_to_install:
+        print(f"[INFO] Installing missing packages in venv: {pkgs_to_install}")
+        subprocess.run([venv_python, "-m", "pip", "install"] + pkgs_to_install, check=True)
 """===============================================================================
 EVALLAB STAGE 3/4: EXPERIMENT EXECUTION
 
@@ -638,6 +658,7 @@ class ExperimentExecutor:
             python_cmd = str(Path(python_cmd).resolve())
 
 
+
         # Detect if this is a test script (pytest)
         is_test_script = (
             'tests' in str(script_path.parent)
@@ -645,12 +666,21 @@ class ExperimentExecutor:
             or script_path.parent.name.startswith('test')
         )
 
+        # Detect if this is a shell script
+        is_shell_script = script_path.suffix == '.sh'
+
         # Prepare environment variables
         env = os.environ.copy()
         env.update(config.env_vars)
+        # Force single-threaded execution in subprocesses
+        env["OMP_NUM_THREADS"] = "1"
+        env["MKL_NUM_THREADS"] = "1"
+        env["TF_NUM_INTEROP_THREADS"] = "1"
+        env["TF_NUM_INTRAOP_THREADS"] = "1"
 
         # Set working directory to script's parent
         working_dir = config.working_dir if config.working_dir else script_path.parent
+
 
         try:
             import subprocess
@@ -669,6 +699,59 @@ class ExperimentExecutor:
                     text=True,
                     bufsize=1
                 )
+            elif is_shell_script:
+                venv_python = python_cmd if python_cmd else 'python3'
+                # Auto-install tensorflow_hub/tensorflow if textattack is present in the script
+                try:
+                    with open(script_path, 'r') as f:
+                        script_content = f.read()
+                    if 'textattack' in script_content:
+                        self.logger.info("[run_experiment] Ensuring tensorflow_hub and tensorflow are installed in venv...")
+                        ensure_tensorflow_hub(venv_python)
+                except Exception as e:
+                    self.logger.warning(f"[run_experiment] Could not check for textattack in script: {e}")
+                # Auto-download required NLTK data before running textattack
+                try:
+                    import subprocess as _subp
+                    self.logger.info("[run_experiment] Ensuring required NLTK data is installed in venv...")
+                    _subp.run([
+                        venv_python, '-m', 'nltk.downloader',
+                        'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng', 'universal_tagset', 'punkt'
+                    ], check=False)
+                except Exception as e:
+                    self.logger.warning(f"[run_experiment] Failed to auto-download NLTK data: {e}")
+
+                rewritten_lines = []
+                try:
+                    with open(script_path, 'r') as f:
+                        for line in f:
+                            if line.strip().startswith('textattack '):
+                                rewritten_lines.append(line.replace('textattack', f'{venv_python} -m textattack', 1))
+                            else:
+                                rewritten_lines.append(line)
+                    import tempfile
+                    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.sh') as tf:
+                        tf.writelines(rewritten_lines)
+                        temp_script_path = tf.name
+                except Exception as e:
+                    self.logger.error(f"Failed to rewrite shell script for textattack: {e}")
+                    temp_script_path = str(script_path)
+                cmd = ['bash', temp_script_path] + config.args
+                self.logger.info(f"[run_experiment] [PRE] About to run shell script: {' '.join(cmd)}")
+                try:
+                    proc = subprocess.Popen(
+                        cmd,
+                        cwd=str(working_dir),
+                        env=env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1
+                    )
+                    self.logger.info(f"[run_experiment] [POST] Shell script process started successfully.")
+                except Exception as e:
+                    self.logger.error(f"[run_experiment] [ERROR] Failed to start shell script: {e}")
+                    raise
             else:
                 cmd = [python_cmd, str(script_path)] + config.args
                 self.logger.info(f"[run_experiment] Running subprocess: {' '.join(cmd)}")
@@ -690,11 +773,10 @@ class ExperimentExecutor:
             def stream_output(pipe, lines, is_stderr=False):
                 for line in iter(pipe.readline, ''):
                     lines.append(line)
-                    # Log as ERROR only if the line looks like a real error
-                    if is_stderr and any(word in line.lower() for word in ["error", "traceback", "exception"]):
-                        self.logger.error(line.rstrip())
+                    if is_stderr:
+                        self.logger.info(f"[STDERR] {line.rstrip()}")
                     else:
-                        self.logger.info(line.rstrip())
+                        self.logger.info(f"[STDOUT] {line.rstrip()}")
                 pipe.close()
             stdout_thread = threading.Thread(target=stream_output, args=(proc.stdout, stdout_lines, False))
             stderr_thread = threading.Thread(target=stream_output, args=(proc.stderr, stderr_lines, True))
@@ -738,6 +820,7 @@ class ExperimentExecutor:
                         except Exception:
                             continue
 
+
             # Merge metrics from output files if present
             for out in outputs.values():
                 if isinstance(out, dict):
@@ -748,6 +831,32 @@ class ExperimentExecutor:
                             for kk, vv in v.items():
                                 if isinstance(vv, (int, float)) and kk not in metrics:
                                     metrics[kk] = vv
+
+            # Special handling for textattack: parse log.csv for attack metrics
+            log_csv_path = working_dir / 'log.csv'
+            if log_csv_path.exists():
+                import csv
+                total_attacks = 0
+                successful_attacks = 0
+                total_queries = 0
+                try:
+                    with open(log_csv_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            total_attacks += 1
+                            if row.get('result_type', '').lower() == 'successful':
+                                successful_attacks += 1
+                            try:
+                                total_queries += int(row.get('num_queries', 0))
+                            except Exception:
+                                pass
+                    if total_attacks > 0:
+                        metrics['attack_success_rate'] = successful_attacks / total_attacks
+                        metrics['num_attacks'] = total_attacks
+                        metrics['num_successful_attacks'] = successful_attacks
+                        metrics['avg_num_queries'] = total_queries / total_attacks if total_attacks else 0
+                except Exception as e:
+                    self.logger.warning(f"Failed to parse textattack log.csv: {e}")
 
             # If this was a pytest run, also parse test results
             if is_test_script:
