@@ -716,14 +716,43 @@ class ExperimentExecutor:
             self.logger.info(f"[run_experiment] End time: {end_time_str}")
             self.logger.info(f"[run_experiment] Duration: {duration:.2f} seconds")
 
-            # If this was a pytest run, parse results and write complete_results.json
+
+            # Always collect outputs from files
             outputs = self._collect_outputs(working_dir)
+
+            # Parse stdout for metrics (accuracy, f1, etc.)
+            import re
+            metric_patterns = [
+                r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",
+                r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)"
+            ]
+            metrics = {}
+            for line in stdout_lines + stderr_lines:
+                for pat in metric_patterns:
+                    m = re.search(pat, line, re.IGNORECASE)
+                    if m:
+                        key = m.group(1).lower().replace(' ', '_').replace('-', '_')
+                        try:
+                            val = float(m.group(2))
+                            metrics[key] = val
+                        except Exception:
+                            continue
+
+            # Merge metrics from output files if present
+            for out in outputs.values():
+                if isinstance(out, dict):
+                    for k, v in out.items():
+                        if isinstance(v, (int, float)) and k not in metrics:
+                            metrics[k] = v
+                        elif isinstance(v, dict):
+                            for kk, vv in v.items():
+                                if isinstance(vv, (int, float)) and kk not in metrics:
+                                    metrics[kk] = vv
+
+            # If this was a pytest run, also parse test results
             if is_test_script:
-                import re
-                # Parse pytest output for test results summary
                 passed = failed = errors = 0
                 for line in stdout_lines + stderr_lines:
-                    # e.g. "3 passed, 1 failed in 0.12s"
                     m = re.search(r'(\d+)\s+passed', line)
                     if m:
                         passed += int(m.group(1))
@@ -733,21 +762,20 @@ class ExperimentExecutor:
                     m = re.search(r'(\d+)\s+error', line)
                     if m:
                         errors += int(m.group(1))
-                summary = {
-                    "tests_passed": passed,
-                    "tests_failed": failed,
-                    "tests_errored": errors,
-                    "success": (failed == 0 and errors == 0),
-                    "duration": duration,
-                }
-                # Write complete_results.json for EVALLab result evaluator
-                try:
-                    with open(str(working_dir / 'complete_results.json'), 'w') as f:
-                        _json.dump(summary, f, indent=2)
-                    outputs['complete_results.json'] = summary
-                    self.logger.info(f"[run_experiment] Wrote complete_results.json: {summary}")
-                except Exception as e:
-                    self.logger.error(f"[run_experiment] Failed to write complete_results.json: {e}")
+                metrics['tests_passed'] = passed
+                metrics['tests_failed'] = failed
+                metrics['tests_errored'] = errors
+                metrics['success'] = (failed == 0 and errors == 0)
+                metrics['duration'] = duration
+
+            # Write all found metrics to complete_results.json
+            try:
+                with open(str(working_dir / 'complete_results.json'), 'w') as f:
+                    _json.dump(metrics, f, indent=2)
+                outputs['complete_results.json'] = metrics
+                self.logger.info(f"[run_experiment] Wrote complete_results.json: {metrics}")
+            except Exception as e:
+                self.logger.error(f"[run_experiment] Failed to write complete_results.json: {e}")
 
             # Log full stdout and stderr for debugging
             if proc.returncode != 0:

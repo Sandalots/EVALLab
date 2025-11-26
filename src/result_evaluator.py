@@ -44,6 +44,40 @@ class ExperimentSet:
 
 
 class ResultEvaluator:
+    def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
+        """Recursively extract numeric metrics from nested dictionaries."""
+        metrics = {}
+        for key, value in data.items():
+            current_key = f"{prefix}/{key}" if prefix else key
+            if isinstance(value, dict):
+                if 'metrics' in value:
+                    metric_dict = value['metrics']
+                    for metric_name, metric_value in metric_dict.items():
+                        if isinstance(metric_value, dict):
+                            for threshold, val in metric_value.items():
+                                if isinstance(val, (int, float)):
+                                    full_key = f"{current_key}/{metric_name}@{threshold}"
+                                    metrics[full_key] = float(val)
+                        elif isinstance(metric_value, (int, float)):
+                            full_key = f"{current_key}/{metric_name}"
+                            metrics[full_key] = float(metric_value)
+                else:
+                    nested = self._extract_metrics_from_nested_dict(value, current_key)
+                    metrics.update(nested)
+            elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                metrics[current_key] = float(value)
+        return metrics
+
+    def load_paper_metrics(self, codebase_path: Path) -> dict:
+        """Load ground truth metrics extracted from the paper (paper_metrics.json)."""
+        paper_metrics_path = codebase_path / 'paper_metrics.json'
+        if paper_metrics_path.exists():
+            try:
+                with open(paper_metrics_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load paper_metrics.json: {e}")
+        return {}
     def _build_metrics_table_rows(self, df):
         """
         Build HTML table rows for the metrics comparison table.
@@ -212,62 +246,44 @@ class ResultEvaluator:
     def extract_all_metrics_from_experiments(self, experiment_sets: List[ExperimentSet]) -> Dict[str, Dict[str, float]]:
         """
         Extract all metrics from all experiment sets, organized by configuration.
-
         Args:
             experiment_sets: List of experiment results
-
         Returns:
             Dict mapping "experiment_set/config/model/metric" to value
         """
         all_metrics = {}
-
         for exp_set in experiment_sets:
             metrics = self._extract_metrics_from_nested_dict(
                 exp_set.results,
                 prefix=exp_set.name
             )
-            all_metrics.update(metrics)
-
+            all_metrics[exp_set.name] = metrics
         return all_metrics
 
-    def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
-        """
-        Recursively extract numeric metrics from nested dictionaries.
+    def compare_to_paper_metrics(self, codebase_path: Path, experiment_sets: List[ExperimentSet]) -> list:
+        """Compare all reproduced metrics to paper metrics and return a list of diffs."""
+        paper_metrics = self.load_paper_metrics(codebase_path)
+        all_metrics = self.extract_all_metrics_from_experiments(experiment_sets)
+        comparisons = []
+        for config, metrics in all_metrics.items():
+            for metric_name, reproduced_value in metrics.items():
+                if metric_name in paper_metrics:
+                    baseline_value = paper_metrics[metric_name]
+                    diff = reproduced_value - baseline_value
+                    percent_diff = 100 * diff / baseline_value if baseline_value else 0.0
+                    within = abs(percent_diff) <= self.threshold * 100
+                    comparisons.append({
+                        'configuration': config,
+                        'metric_name': metric_name,
+                        'baseline_value': baseline_value,
+                        'reproduced_value': reproduced_value,
+                        'difference': diff,
+                        'percent_difference': percent_diff,
+                        'within_threshold': within
+                    })
+        return comparisons
 
-        Args:
-            data: Nested dictionary (e.g., from complete_results.json)
-            prefix: Prefix for metric names
-
-        Returns:
-            Flat dictionary of metric_name: value
-        """
-        metrics = {}
-
-        for key, value in data.items():
-            current_key = f"{prefix}/{key}" if prefix else key
-
-            if isinstance(value, dict):
-                if 'metrics' in value:
-                    metric_dict = value['metrics']
-                    for metric_name, metric_value in metric_dict.items():
-                        if isinstance(metric_value, dict):
-                            for threshold, val in metric_value.items():
-                                if isinstance(val, (int, float)):
-                                    full_key = f"{current_key}/{metric_name}@{threshold}"
-                                    metrics[full_key] = float(val)
-                        elif isinstance(metric_value, (int, float)):
-                            full_key = f"{current_key}/{metric_name}"
-                            metrics[full_key] = float(metric_value)
-                else:
-                    # Recurse into nested dicts
-                    nested = self._extract_metrics_from_nested_dict(
-                        value, current_key)
-                    metrics.update(nested)
-            elif isinstance(value, (int, float)) and not isinstance(value, bool):
-                # Direct numeric value
-                metrics[current_key] = float(value)
-
-        return metrics
+    # ...existing code...
 
     def extract_baseline_from_paper(self, paper_content: str, codebase_path: Path = None) -> BaselineMetrics:
         """
@@ -339,7 +355,6 @@ JSON:"""
 
             if not cleaned_metrics:
                 logger.warning("No metrics extracted from paper")
-
             return BaselineMetrics(
                 metrics=cleaned_metrics,
                 source="Extracted from paper using EVALLab"
@@ -385,13 +400,9 @@ JSON:"""
                 try:
                     with open(results_path, 'r') as f:
                         results = json.load(f)
-
-                    extracted = self._extract_metrics_from_nested_dict(
-                        results, prefix=dir_name)
+                    extracted = self._extract_metrics_from_nested_dict(results, prefix=dir_name)
                     metrics.update(extracted)
-
-                    logger.info(
-                        f"✓ Extracted {len(extracted)} baseline metrics from {dir_name}/complete_results.json")
+                    logger.info(f"✓ Extracted {len(extracted)} baseline metrics from {dir_name}/complete_results.json")
                 except Exception as e:
                     logger.error(f"Failed to extract from {results_path}: {e}")
 
@@ -735,24 +746,6 @@ JSON:"""
                 if config not in by_config:
                     by_config[config] = []
                 by_config[config].append(comp)
-
-            # Show summary for each configuration
-            # Limit to 10 configs
-            for config, config_comps in sorted(by_config.items())[:10]:
-                passing = sum(1 for c in config_comps if c.within_threshold)
-                status = "✓" if passing == len(config_comps) else "✗"
-
-                report_lines.append(
-                    f"  {status} {config}: {passing}/{len(config_comps)} metrics pass"
-                )
-
-                # Show top 3 metrics for this config
-                for comp in sorted(config_comps, key=lambda x: abs(x.percent_difference))[:3]:
-                    status_icon = "✓" if comp.within_threshold else "✗"
-                    report_lines.append(
-                        f"      {status_icon} {comp.metric_name}: baseline={comp.baseline_value:.4f}, "
-                        f"reproduced={comp.reproduced_value:.4f} ({comp.percent_difference:+.2f}%)"
-                    )
 
         # Best performing configurations (closest to baseline)
         report_lines.extend([

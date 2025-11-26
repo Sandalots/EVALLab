@@ -137,6 +137,26 @@ logger = logging.getLogger(__name__)
 
 
 class ReproductionAgent:
+    def _extract_metrics_from_text(self, text: str) -> dict:
+        """Extract numeric metrics (accuracy, f1, etc.) from a text block using regex."""
+        import re
+        metric_patterns = [
+            r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",
+            r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)"
+            ]
+        
+        metrics = {}
+        for line in text.splitlines():
+            for pat in metric_patterns:
+                m = re.search(pat, line, re.IGNORECASE)
+                if m:
+                    key = m.group(1).lower().replace(' ', '_').replace('-', '_')
+                    try:
+                        val = float(m.group(2))
+                        metrics[key] = val
+                    except Exception:
+                        continue
+        return metrics
     """Main agent that coordinates paper reproduction workflow with integrated LLM."""
 
     def __init__(self, config_path: Optional[Path] = None):
@@ -1097,6 +1117,21 @@ class ReproductionAgent:
                     logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
 
         return [r for r in results if r.success]
+
+    def extract_and_store_paper_metrics(self, paper_content: PaperContent, output_dir: Path):
+        """Extract metrics from the paper's results section and save as ground truth for comparison."""
+        metrics = {}
+        if paper_content.results:
+            metrics = self._extract_metrics_from_text(paper_content.results)
+        # Optionally, also try from experiments or methodology if results is empty
+        if not metrics and paper_content.experiments:
+            metrics = self._extract_metrics_from_text(paper_content.experiments)
+        if metrics:
+            with open(output_dir / 'paper_metrics.json', 'w') as f:
+                json.dump(metrics, f, indent=2)
+            logger.info(f"Extracted paper metrics: {metrics}")
+        else:
+            logger.warning("No paper metrics found in results section.")
 
     def _save_results(self, paper_path: Path, comparisons: list,
                       report: str, summary_stats: str, analysis: str,
