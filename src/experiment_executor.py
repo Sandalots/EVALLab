@@ -486,6 +486,28 @@ class ExperimentExecutor:
                 return False
 
 
+        # Special handling for TextAttack on Apple Silicon (macOS arm64)
+        if (
+            ('textattack' in str(codebase_path).lower() or (codebase_path / 'textattack').is_dir())
+            and platform.system() == 'Darwin'
+            and platform.machine() == 'arm64'
+        ):
+            python_executable, _, _ = _get_venv_paths(venv_path)
+            pyver = subprocess.run([str(python_executable), '--version'], capture_output=True, text=True)
+            if not (('3.10' in pyver.stdout) or ('3.11' in pyver.stdout)):
+                logger.error('On Apple Silicon, TextAttack requires Python 3.10 or 3.11 for ML compatibility.')
+                return False
+                logger.info('Detected TextAttack on Apple Silicon. Installing tensorflow-macos, tensorflow-metal, CPU-only torch, tf-keras, and compatible protobuf...')
+            try:
+                subprocess.run([str(python_executable), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'], check=True, capture_output=True, text=True)
+                subprocess.run([str(python_executable), '-m', 'pip', 'install', 'tensorflow-macos', 'tensorflow-metal'], check=True, capture_output=True, text=True)
+                subprocess.run([str(python_executable), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cpu'], check=True, capture_output=True, text=True)
+                subprocess.run([str(python_executable), '-m', 'pip', 'install', 'tf-keras', 'protobuf<5.0.0'], check=True, capture_output=True, text=True)
+                logger.info('✓ Installed Apple Silicon ML libraries')
+            except subprocess.CalledProcessError as e:
+                logger.error(f'✗ Failed to install Apple Silicon ML libraries: {e.stderr}')
+                return False
+
         # Install dependencies if not already installed
         if dependencies and not venv_ready:
             python_executable, _, _ = _get_venv_paths(venv_path)

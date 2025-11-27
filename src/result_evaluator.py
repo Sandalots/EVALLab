@@ -515,6 +515,38 @@ JSON:"""
 
         return metrics_by_config
 
+    def _normalize_metric_key(self, key: str) -> str:
+        """
+        Normalize metric key for robust comparison.
+        - Lowercase
+        - Replace dashes with underscores
+        - Remove redundant slashes
+        - Replace @ with _at_
+        - Remove spaces
+        - Remove trailing/leading slashes
+        - Collapse multiple underscores
+        - Collapse repeated 'root/' prefixes to a single 'root/'
+        """
+        import re
+        key = key.lower().replace('-', '_').replace(' ', '').replace('@', '_at_')
+        key = re.sub(r'/+', '/', key)
+        key = re.sub(r'_+', '_', key)
+        # Collapse any sequence of two or more 'root/' at the start to a single 'root/'
+        key = re.sub(r'^(root/)+', 'root/', key)
+        key = key.strip('/')
+        return key
+
+    def _flatten_dict(self, d, parent_key="", sep="/"):
+        """Recursively flattens a nested dictionary."""
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(self._flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
+
     def compare_results(self, baseline: BaselineMetrics,
                         reproduced: Dict[str, float]) -> List[ComparisonResult]:
         """
@@ -532,20 +564,26 @@ JSON:"""
         """
         comparisons = []
 
-        # Debug logging for metric matching
-        logger.debug(f"Baseline has {len(baseline.metrics)} metrics")
-        logger.debug(f"Reproduced has {len(reproduced)} metrics")
-        logger.debug(
-            f"Sample baseline keys: {list(baseline.metrics.keys())[:3]}")
-        logger.debug(f"Sample reproduced keys: {list(reproduced.keys())[:3]}")
+        # Flatten nested dicts in reproduced metrics (if any)
+        flat_reproduced = self._flatten_dict(reproduced) if any(isinstance(v, dict) for v in reproduced.values()) else reproduced
+
+        # Normalize all keys in both baseline and reproduced dicts
+        norm_baseline = {self._normalize_metric_key(str(k)): (k, v) for k, v in baseline.metrics.items()}
+        norm_reproduced = {self._normalize_metric_key(str(k)): (k, v) for k, v in flat_reproduced.items()}
+
+        # Log all keys and values for debugging
+        logger.info(f"[DEBUG] Baseline metric keys/values: {list(baseline.metrics.items())}")
+        logger.info(f"[DEBUG] Reproduced metric keys/values: {list(flat_reproduced.items())}")
+        logger.info(f"[DEBUG] Normalized baseline keys: {list(norm_baseline.keys())}")
+        logger.info(f"[DEBUG] Normalized reproduced keys: {list(norm_reproduced.keys())}")
 
         matched_count = 0
         unmatched_baseline = []
 
-        for baseline_key, baseline_value in baseline.metrics.items():
-            # Simple exact matching since keys should be identical when both from complete_results.json
-            if baseline_key in reproduced:
-                reproduced_value = reproduced[baseline_key]
+        # Compare all normalized keys, including flat keys (no config path)
+        for norm_key, (baseline_key, baseline_value) in norm_baseline.items():
+            if norm_key in norm_reproduced:
+                repro_key, reproduced_value = norm_reproduced[norm_key]
                 matched_count += 1
 
                 difference = reproduced_value - baseline_value
@@ -555,9 +593,16 @@ JSON:"""
                 else:
                     percent_diff = float('inf') if difference != 0 else 0
 
-                within_threshold = abs(percent_diff) <= (self.threshold * 100)
+                # Use the key itself as configuration if no path structure
+                if '/' in baseline_key:
+                    metric_name = baseline_key.split('/')[-1]
+                    config = baseline_key
+                else:
+                    metric_name = baseline_key
+                    config = baseline_key
 
-                metric_name = baseline_key.split('/')[-1]
+                # Define within_threshold: True if percent_diff is within self.threshold * 100
+                within_threshold = abs(percent_diff) <= self.threshold * 100
 
                 comparisons.append(ComparisonResult(
                     metric_name=metric_name,
@@ -566,119 +611,17 @@ JSON:"""
                     difference=difference,
                     percent_difference=percent_diff,
                     within_threshold=within_threshold,
-                    configuration=baseline_key
+                    configuration=config
                 ))
             else:
-                baseline_parts = baseline_key.split('/')
-
-                if len(baseline_parts) < 5:
-                    logger.warning(
-                        f"Baseline key has unexpected format: {baseline_key}")
-                    unmatched_baseline.append(baseline_key)
-                    continue
-
-                exp_set = baseline_parts[0]  # e.g., outputs_all_methods
-                granularity = baseline_parts[1]  # e.g., sentence
-                strategy = baseline_parts[2]  # e.g., minimal
-                task_type = baseline_parts[3]  # e.g., retrieval or downstream
-                retriever = baseline_parts[4]  # e.g., bm25
-                metric_name = baseline_parts[5] if len(
-                    baseline_parts) > 5 else None  # e.g., recall@10, accuracy
-
-                # Normalize metric names for fuzzy matching
-                metric_variants = [metric_name] if metric_name else []
-                if metric_name:
-                    if metric_name == 'f1':
-                        metric_variants.append('f1_score')
-                    elif metric_name == 'f1_score':
-                        metric_variants.append('f1')
-                    # Add underscore variant
-                    if '_' not in metric_name:
-                        metric_variants.append(metric_name.replace('-', '_'))
-
-                # Find matching reproduced metrics with fuzzy matching
-                matches = []
-
-                # For downstream tasks, we need to also try with 'answerability' subtask
-                # since baseline might be: downstream/bm25/accuracy
-                # but reproduced might be: downstream/bm25/answerability/accuracy
-                search_patterns = []
-                if task_type == 'downstream' and metric_name:
-                    search_patterns.append(
-                        f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/answerability/{metric_name}")
-                    if metric_name == 'f1':
-                        search_patterns.append(
-                            f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/answerability/f1_score")
-                    search_patterns.append(
-                        f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/{metric_name}")
-                elif metric_name:
-                    # For retrieval, direct match
-                    search_patterns.append(
-                        f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/{metric_name}")
-
-                for pattern in search_patterns:
-                    if pattern in reproduced:
-                        matches.append((pattern, reproduced[pattern]))
-                        break
-
-                if not matches:
-                    # Fallback to fuzzy matching
-                    for repro_key, repro_value in reproduced.items():
-                        # Check if this reproduced metric matches the baseline configuration
-                        # Must match: exp_set, granularity, strategy, task_type, retriever
-                        if not (exp_set in repro_key and
-                                granularity in repro_key and
-                                strategy in repro_key and
-                                task_type in repro_key and
-                                retriever in repro_key):
-                            continue
-
-                        if metric_name:
-                            if repro_key.endswith(metric_name):
-                                matches.append((repro_key, repro_value))
-                                break
-                            elif metric_name == 'f1' and repro_key.endswith('f1_score'):
-                                matches.append((repro_key, repro_value))
-                                break
-                            elif metric_name == 'f1_score' and repro_key.endswith('f1'):
-                                matches.append((repro_key, repro_value))
-                                break
-
-                if not matches:
-                    logger.debug(
-                        f"No match found for baseline: {baseline_key}")
-                    unmatched_baseline.append(baseline_key)
-                    continue
-
-                matched_count += 1
-
-                for config_path, reproduced_value in matches:
-                    difference = reproduced_value - baseline_value
-
-                    if baseline_value != 0:
-                        percent_diff = (difference / abs(baseline_value)) * 100
-                    else:
-                        percent_diff = float('inf') if difference != 0 else 0
-
-                    within_threshold = abs(percent_diff) <= (
-                        self.threshold * 100)
-
-                    comparisons.append(ComparisonResult(
-                        metric_name=metric_name,
-                        baseline_value=baseline_value,
-                        reproduced_value=reproduced_value,
-                        difference=difference,
-                        percent_difference=percent_diff,
-                        within_threshold=within_threshold,
-                        configuration=config_path
-                    ))
+                unmatched_baseline.append(baseline_key)
 
         # Summary logging
         logger.info(
-            f"✓ Matched {matched_count}/{len(baseline.metrics)} baseline metrics")
+            f"✓ Matched {matched_count}/{len(norm_baseline)} baseline metrics (normalized key match, flat keys included)")
         if unmatched_baseline:
             logger.warning(
-                f"⚠️  {len(unmatched_baseline)} baseline metrics had no matches")
+                f"⚠️  {len(unmatched_baseline)} baseline metrics had no matches (after normalization)")
             logger.debug(f"Unmatched: {unmatched_baseline[:5]}")
 
         return comparisons
@@ -1287,6 +1230,11 @@ Provide a concise analysis (3-4 paragraphs)."""
         generated_files = {}
 
         logger.info(f"Generating visualizations for {len(df)} comparisons...")
+
+        # Handle empty DataFrame or missing column gracefully
+        if df.empty or 'within_threshold' not in df.columns:
+            logger.warning("No metric comparisons available or 'within_threshold' column missing. Skipping visualizations.")
+            return generated_files
 
         # 1. Overall Performance Comparison Bar Chart
         fig, ax = plt.subplots(figsize=(13, 8))
