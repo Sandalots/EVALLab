@@ -44,8 +44,76 @@ class ExperimentSet:
 
 
 class ResultEvaluator:
+    def compare_per_example_results(self, baseline_examples, reproduced_examples):
+        """
+        Compare per-example attack results between baseline and reproduced runs.
+        Returns a list of diffs (dicts) for mismatched predictions or outputs.
+        """
+        diffs = []
+        # Use original_text as the key for matching
+        baseline_map = {ex.get('original_text'): ex for ex in baseline_examples}
+        reproduced_map = {ex.get('original_text'): ex for ex in reproduced_examples}
+        for key in baseline_map:
+            base = baseline_map[key]
+            repro = reproduced_map.get(key)
+            if not repro:
+                diffs.append({'original_text': key, 'error': 'Missing in reproduced'})
+                continue
+            # Compare outputs and result_type
+            mismatch = False
+            diff_entry = {'original_text': key}
+            for field in ['perturbed_text', 'original_output', 'perturbed_output', 'ground_truth_output', 'result_type']:
+                base_val = base.get(field)
+                repro_val = repro.get(field)
+                if base_val != repro_val:
+                    mismatch = True
+                    diff_entry[field] = {'baseline': base_val, 'reproduced': repro_val}
+            if mismatch:
+                diffs.append(diff_entry)
+        return diffs
+
+    def generate_attack_summary_table(self, metrics_dict):
+        """
+        Generate a TextAttack-style summary table as HTML from attack metrics.
+        """
+        keys = [
+            ('attack_success_rate', 'Attack Success Rate'),
+            ('avg_num_queries', 'Avg Num Queries'),
+            ('num_attacks', 'Num Attacks'),
+            ('num_successful_attacks', 'Num Successful Attacks')
+        ]
+        rows = []
+        for k, label in keys:
+            val = metrics_dict.get(k, '-')
+            if isinstance(val, float):
+                val = f"{val:.4f}" if 'rate' in k else f"{val:.2f}" if 'avg' in k else f"{val}"
+            rows.append(f"<tr><td>{label}</td><td>{val}</td></tr>")
+        return """
+        <table border="1" style="border-collapse:collapse;">
+            <tr><th>Metric</th><th>Value</th></tr>
+            {rows}
+        </table>
+        """.format(rows='\n'.join(rows))
+
+    def generate_per_example_diff_table(self, diffs):
+        """
+        Generate an HTML table for per-example prediction diffs.
+        """
+        if not diffs:
+            return "<p>No per-example mismatches found.</p>"
+        headers = set()
+        for d in diffs:
+            headers.update(d.keys())
+        headers = list(headers)
+        html = ["<table border='1' style='border-collapse:collapse;'>"]
+        html.append("<tr>" + ''.join(f"<th>{h}</th>" for h in headers) + "</tr>")
+        for d in diffs:
+            html.append("<tr>" + ''.join(f"<td>{d.get(h, '')}</td>" for h in headers) + "</tr>")
+        html.append("</table>")
+        return '\n'.join(html)
+
     def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
-        """Recursively extract numeric metrics from nested dictionaries."""
+        """Recursively extract numeric metrics from nested dictionaries, and also include all top-level numeric keys (for flat summary metrics)."""
         metrics = {}
         for key, value in data.items():
             current_key = f"{prefix}/{key}" if prefix else key
@@ -66,17 +134,73 @@ class ResultEvaluator:
                     metrics.update(nested)
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 metrics[current_key] = float(value)
+        # Also add all top-level numeric keys (for flat summary metrics, e.g., from TextAttack)
+        if prefix == "" and isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    metrics[key] = float(value)
         return metrics
 
     def load_paper_metrics(self, codebase_path: Path) -> dict:
-        """Load ground truth metrics extracted from the paper (paper_metrics.json)."""
+        """Load ground truth metrics extracted from the paper (paper_metrics.json), searching both experiment and codebase directories. Fallback to complete_results.json if not found."""
+        import os
+        # 1. Check for paper_metrics.json in experiment directory
         paper_metrics_path = codebase_path / 'paper_metrics.json'
+        logger.debug(f"[DEBUG] Checking for paper_metrics.json in experiment directory: {paper_metrics_path}")
         if paper_metrics_path.exists():
             try:
                 with open(paper_metrics_path, 'r') as f:
+                    logger.info("✓ Using paper_metrics.json as baseline for metric comparison (experiment directory).")
                     return json.load(f)
             except Exception as e:
-                logger.error(f"Failed to load paper_metrics.json: {e}")
+                logger.error(f"Failed to load paper_metrics.json from experiment directory: {e}")
+
+        # 2. Check for paper_metrics.json in codebase directory (e.g., papers/codebases/TextAttack/paper_metrics.json)
+        # Look for a 'codebases' or 'papers' directory in the parent tree
+        current = codebase_path
+        found = False
+        for level in range(5):  # Search up to 5 levels up
+            codebases_dir = current / 'codebases'
+            papers_dir = current / 'papers'
+            logger.debug(f"[DEBUG] Searching for paper_metrics.json in: {codebases_dir} and {papers_dir} (level {level})")
+            for d in [codebases_dir, papers_dir]:
+                if d.exists() and d.is_dir():
+                    logger.debug(f"[DEBUG] Directory exists: {d}, searching recursively for paper_metrics.json")
+                    for root, dirs, files in os.walk(d):
+                        logger.debug(f"[DEBUG] Checking directory: {root}")
+                        if 'paper_metrics.json' in files:
+                            file_path = os.path.join(root, 'paper_metrics.json')
+                            logger.debug(f"[DEBUG] Found paper_metrics.json at: {file_path}")
+                            try:
+                                with open(file_path, 'r') as f:
+                                    logger.info(f"✓ Using paper_metrics.json as baseline for metric comparison (found in {file_path}).")
+                                    return json.load(f)
+                            except Exception as e:
+                                logger.error(f"Failed to load paper_metrics.json from {file_path}: {e}")
+                            found = True
+                            break
+                else:
+                    logger.debug(f"[DEBUG] Directory does not exist: {d}")
+                if found:
+                    break
+            if found:
+                break
+            if current.parent == current:
+                logger.debug(f"[DEBUG] Reached filesystem root at {current}, stopping search.")
+                break
+            current = current.parent
+
+        # 3. Fallback: use complete_results.json as baseline
+        complete_results_path = codebase_path / 'complete_results.json'
+        logger.debug(f"[DEBUG] Checking for complete_results.json in: {complete_results_path}")
+        if complete_results_path.exists():
+            try:
+                with open(complete_results_path, 'r') as f:
+                    logger.warning("⚠ Using complete_results.json as baseline (may give 100% match)")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load complete_results.json: {e}")
+        logger.error("No baseline metrics found (paper_metrics.json in experiment/codebase or complete_results.json)")
         return {}
     def _build_metrics_table_rows(self, df):
         """
@@ -547,20 +671,12 @@ JSON:"""
                 items.append((new_key, v))
         return dict(items)
 
+
     def compare_results(self, baseline: BaselineMetrics,
                         reproduced: Dict[str, float]) -> List[ComparisonResult]:
         """
-        Compare reproduced results to baseline metrics.
-
-        Baseline format: outputs_all_methods/sentence/minimal/bm25/recall@10
-        Reproduced format: outputs_all_methods/sentence/minimal/retrieval/bm25/metrics/recall@10
-
-        Args:
-            baseline: Baseline metrics from paper
-            reproduced: Metrics from reproduced experiments (can be nested paths)
-
-        Returns:
-            List of ComparisonResult objects
+        Compare reproduced results to baseline metrics, but also include all metrics from reproduced results even if missing from baseline.
+        Baseline value will be 'N/A' for those metrics, and status will be 'N/A'.
         """
         comparisons = []
 
@@ -579,12 +695,14 @@ JSON:"""
 
         matched_count = 0
         unmatched_baseline = []
+        matched_keys = set()
 
         # Compare all normalized keys, including flat keys (no config path)
         for norm_key, (baseline_key, baseline_value) in norm_baseline.items():
             if norm_key in norm_reproduced:
                 repro_key, reproduced_value = norm_reproduced[norm_key]
                 matched_count += 1
+                matched_keys.add(norm_key)
 
                 difference = reproduced_value - baseline_value
 
@@ -616,6 +734,26 @@ JSON:"""
             else:
                 unmatched_baseline.append(baseline_key)
 
+        # Now add all metrics from reproduced that were not in baseline
+        for norm_key, (repro_key, reproduced_value) in norm_reproduced.items():
+            if norm_key not in matched_keys:
+                # Use the key itself as configuration if no path structure
+                if '/' in repro_key:
+                    metric_name = repro_key.split('/')[-1]
+                    config = repro_key
+                else:
+                    metric_name = repro_key
+                    config = repro_key
+                comparisons.append(ComparisonResult(
+                    metric_name=metric_name,
+                    baseline_value='N/A',
+                    reproduced_value=reproduced_value,
+                    difference='N/A',
+                    percent_difference='N/A',
+                    within_threshold=False,
+                    configuration=config
+                ))
+
         # Summary logging
         logger.info(
             f"✓ Matched {matched_count}/{len(norm_baseline)} baseline metrics (normalized key match, flat keys included)")
@@ -626,7 +764,11 @@ JSON:"""
 
         return comparisons
 
-    def generate_report(self, comparisons: List[ComparisonResult]) -> str:
+    def generate_report(self, comparisons: List[ComparisonResult],
+                       baseline_metrics: dict = None,
+                       reproduced_metrics: dict = None,
+                       baseline_examples: list = None,
+                       reproduced_examples: list = None) -> str:
         """
         Generate a human-readable report of the comparison.
 
@@ -643,6 +785,12 @@ JSON:"""
             ""
         ]
 
+        # If attack metrics are available, show TextAttack-style summary table
+        if reproduced_metrics and any(k in reproduced_metrics for k in ["attack_success_rate", "avg_num_queries", "num_attacks", "num_successful_attacks"]):
+            report_lines.append("TextAttack-Style Attack Results Summary:")
+            report_lines.append(self.generate_attack_summary_table(reproduced_metrics))
+            report_lines.append("")
+
         if not comparisons:
             report_lines.append("No metrics available for comparison.")
             return "\n".join(report_lines)
@@ -656,6 +804,13 @@ JSON:"""
             if exp_set not in by_experiment:
                 by_experiment[exp_set] = []
             by_experiment[exp_set].append(comp)
+
+        # If per-example results are available, show per-example diffs
+        if baseline_examples and reproduced_examples:
+            diffs = self.compare_per_example_results(baseline_examples, reproduced_examples)
+            report_lines.append("\nPer-Example Prediction Differences:")
+            report_lines.append(self.generate_per_example_diff_table(diffs))
+            report_lines.append("")
 
         # Overall summary
         total_metrics = len(comparisons)

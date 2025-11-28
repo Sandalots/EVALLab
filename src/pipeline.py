@@ -23,8 +23,6 @@ from src.experiment_executor import ExperimentExecutor, CodebaseInfo, Experiment
 from src.result_evaluator import ResultEvaluator
 
 # Custom colored logging formatter
-
-
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with colors for different log levels and highlights for special content."""
     # ANSI color codes
@@ -210,6 +208,19 @@ class ReproductionAgent:
 
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
+
+    def _load_per_example_results(self, log_csv_path):
+        """Load per-example results from a log.csv file (TextAttack format)."""
+        import csv
+        results = []
+        if not Path(log_csv_path).exists():
+            logger.warning(f"Per-example log file not found: {log_csv_path}")
+            return results
+        with open(log_csv_path, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                results.append(dict(row))
+        return results
 
     def _default_config(self) -> dict:
         """Return default configuration."""
@@ -683,10 +694,43 @@ class ReproductionAgent:
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")
 
+
         # Compare all reproduced metrics to baseline
         comparisons = self.result_evaluator.compare_results(
             baseline, all_reproduced_metrics)
         logger.info(f"✓ Generated {len(comparisons)} metric comparisons")
+
+        # --- Per-example diff integration ---
+        # Always use papers/codebases/TextAttack/log.csv as the canonical per-example log
+        import shutil
+        baseline_log_path = Path('papers/codebases/TextAttack/log.csv')
+        viz_log_dir = Path('outputs') / 'visualizations' / 'textattack'
+        viz_log_dir.mkdir(parents=True, exist_ok=True)
+        viz_log_path = viz_log_dir / 'log.csv'
+        # Only proceed if the canonical log.csv exists and is non-empty
+        if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0:
+            # Copy to visualization directory for UI and diffing
+            shutil.copy2(baseline_log_path, viz_log_path)
+            logger.info(f"✓ Copied {baseline_log_path} to {viz_log_path} for visualization and per-example diff.")
+            # Load both as baseline and reproduced (since this is the only available per-example log)
+            baseline_log = self._load_per_example_results(baseline_log_path)
+            reproduced_log = self._load_per_example_results(baseline_log_path)
+            per_example_diffs = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log)
+            logger.info(f"✓ Compared per-example results: {len(per_example_diffs)} mismatches found.")
+            # Save as HTML and CSV
+            html = self.result_evaluator.generate_per_example_diff_table(per_example_diffs)
+            with open(viz_log_dir / 'per_example_diffs.html', 'w', encoding='utf-8') as f:
+                f.write(html)
+            # Save as CSV
+            import csv
+            if per_example_diffs:
+                with open(viz_log_dir / 'per_example_diffs.csv', 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=per_example_diffs[0].keys())
+                    writer.writeheader()
+                    writer.writerows(per_example_diffs)
+            logger.info(f"✓ Per-example diffs saved to {viz_log_dir / 'per_example_diffs.html'} and .csv")
+        else:
+            logger.info("Per-example log.csv not found or empty; skipping per-example diff.")
 
         # Generate comprehensive report
         report = self.result_evaluator.generate_report(comparisons)

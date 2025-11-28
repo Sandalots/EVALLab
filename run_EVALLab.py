@@ -1,5 +1,3 @@
-import logging
-from src.pipeline import ColoredFormatter
 """===============================================================================
 EVALLAB ENTRYPOINT: RUNS THE EVALLAB PIPELINE
 
@@ -17,6 +15,9 @@ import argparse
 from pathlib import Path
 import json
 import traceback
+
+import logging
+from src.pipeline import ColoredFormatter
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))

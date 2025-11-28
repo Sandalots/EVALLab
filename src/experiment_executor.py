@@ -1,23 +1,3 @@
-def ensure_tensorflow_hub(venv_python):
-    """Ensure tensorflow_hub and tensorflow are installed in the venv."""
-    import subprocess
-    check_code = (
-        "import importlib.util; "
-        "print(importlib.util.find_spec('tensorflow_hub') is not None); "
-        "print(importlib.util.find_spec('tensorflow') is not None)"
-    )
-    result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
-    lines = result.stdout.strip().splitlines()
-    tfhub_installed = lines[0].strip() == 'True' if lines else False
-    tf_installed = lines[1].strip() == 'True' if len(lines) > 1 else False
-    pkgs_to_install = []
-    if not tfhub_installed:
-        pkgs_to_install.append("tensorflow_hub")
-    if not tf_installed:
-        pkgs_to_install.append("tensorflow")
-    if pkgs_to_install:
-        print(f"[INFO] Installing missing packages in venv: {pkgs_to_install}")
-        subprocess.run([venv_python, "-m", "pip", "install"] + pkgs_to_install, check=True)
 """===============================================================================
 EVALLAB STAGE 3/4: EXPERIMENT EXECUTION
 
@@ -38,6 +18,26 @@ import time
 
 logger = logging.getLogger(__name__)
 
+def ensure_tensorflow_hub(venv_python):
+    """Ensure tensorflow_hub and tensorflow are installed in the venv."""
+    import subprocess
+    check_code = (
+        "import importlib.util; "
+        "print(importlib.util.find_spec('tensorflow_hub') is not None); "
+        "print(importlib.util.find_spec('tensorflow') is not None)"
+    )
+    result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
+    lines = result.stdout.strip().splitlines()
+    tfhub_installed = lines[0].strip() == 'True' if lines else False
+    tf_installed = lines[1].strip() == 'True' if len(lines) > 1 else False
+    pkgs_to_install = []
+    if not tfhub_installed:
+        pkgs_to_install.append("tensorflow_hub")
+    if not tf_installed:
+        pkgs_to_install.append("tensorflow")
+    if pkgs_to_install:
+        print(f"[INFO] Installing missing packages in venv: {pkgs_to_install}")
+        subprocess.run([venv_python, "-m", "pip", "install"] + pkgs_to_install, check=True)
 
 def _get_python_executable():
     """Get the appropriate Python executable for the current platform."""
@@ -450,32 +450,63 @@ class ExperimentExecutor:
         venv_ready = False
         if venv_exists:
             python_executable, _, _ = _get_venv_paths(venv_path)
-            # Check if all dependencies are installed
+            # Always batch install requirements.txt if it exists
             if requirements_path.exists():
-                with open(requirements_path) as f:
-                    reqs = [line.strip() for line in f if line.strip()
-                            and not line.startswith('#')]
-                missing = []
-                for dep in reqs:
+                logger.info("Installing all dependencies from requirements.txt in venv...")
+                try:
                     result = subprocess.run(
-                        [str(python_executable), '-m', 'pip', 'show', dep],
+                        [str(python_executable), '-m', 'pip', 'install', '-r', str(requirements_path)],
+                        check=True,
                         capture_output=True,
-                        text=True
+                        text=True,
+                        timeout=1800
                     )
-                    if result.returncode != 0:
-                        missing.append(dep)
-                if not missing:
-                    logger.info(
-                        "✓ Reusing cached venv and dependencies (no install needed)")
+                    logger.info("✓ Installed all requirements from requirements.txt")
                     venv_ready = True
-                else:
-                    logger.info(
-                        f"Some dependencies missing in venv: {missing}")
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"✗ Failed to install requirements.txt: {e.stderr}")
+                    return False
+                except subprocess.TimeoutExpired:
+                    logger.error(f"✗ Timeout installing requirements.txt after 30 minutes")
+                    return False
+
+            # For TextAttack, ensure tqdm and filelock are installed
+            if ('textattack' in str(codebase_path).lower() or (codebase_path / 'textattack').is_dir()):
+                for extra_dep in ['tqdm', 'filelock']:
+                    logger.info(f"Ensuring {extra_dep} is installed in venv...")
+                    try:
+                        result = subprocess.run(
+                            [str(python_executable), '-m', 'pip', 'install', extra_dep],
+                            check=True,
+                            capture_output=True,
+                            text=True,
+                            timeout=300
+                        )
+                        logger.info(f"✓ Installed {extra_dep} in venv")
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"✗ Failed to install {extra_dep} in venv: {e.stderr}")
+                        return False
+                    except subprocess.TimeoutExpired:
+                        logger.error(f"✗ Timeout installing {extra_dep} in venv after 5 minutes")
+                        return False
 
         if not venv_exists:
             logger.info("Creating virtual environment...")
+            # Try python3.10, then python3.11, then error if neither is found
+            python_versions = ["python3.10", "python3.11"]
+            python_cmd = None
+            for py in python_versions:
+                try:
+                    result = subprocess.run([py, '--version'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        python_cmd = py
+                        break
+                except FileNotFoundError:
+                    continue
+            if not python_cmd:
+                logger.error("Python 3.10 or 3.11 is required but not found in PATH. Please install one of these versions.")
+                return False
             try:
-                python_cmd = _get_python_executable()
                 subprocess.run(
                     [python_cmd, '-m', 'venv', str(venv_path)],
                     check=True,
@@ -700,6 +731,20 @@ class ExperimentExecutor:
         env["TF_NUM_INTEROP_THREADS"] = "1"
         env["TF_NUM_INTRAOP_THREADS"] = "1"
 
+        # For TextAttack, also set additional env vars and args to ensure single process
+        if 'textattack' in str(config.script_path).lower() or 'textattack' in str(config.working_dir).lower():
+            env["TOKENIZERS_PARALLELISM"] = "false"
+            env["PYTHONWARNINGS"] = "ignore"
+            env["OPENBLAS_NUM_THREADS"] = "1"
+            env["NUMEXPR_NUM_THREADS"] = "1"
+            env["VECLIB_MAXIMUM_THREADS"] = "1"
+            env["IN_PARALLEL"] = "0"
+            env["CUDA_VISIBLE_DEVICES"] = ""
+            # If running a shell script, try to add --num_workers=1 or similar if supported
+            # (TextAttack CLI uses --num_workers, but not all scripts may support it)
+            if config.args is not None and '--num_workers' not in config.args:
+                config.args = config.args + ['--num_workers=1']
+
         # Set working directory to script's parent
         working_dir = config.working_dir if config.working_dir else script_path.parent
 
@@ -826,11 +871,11 @@ class ExperimentExecutor:
 
             # Parse stdout for metrics (accuracy, f1, etc.)
             import re
+            metrics = {}
             metric_patterns = [
                 r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",
                 r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)"
             ]
-            metrics = {}
             for line in stdout_lines + stderr_lines:
                 for pat in metric_patterns:
                     m = re.search(pat, line, re.IGNORECASE)
@@ -841,6 +886,86 @@ class ExperimentExecutor:
                             metrics[key] = val
                         except Exception:
                             continue
+
+            # --- TextAttack summary table parsing ---
+            def parse_textattack_summary_table(stdout_lines):
+                """Parse the TextAttack-style summary table from STDOUT and return a dict of metrics."""
+                import logging
+                import re
+                summary_metrics = {}
+                import re
+                border_regex = re.compile(r"^\+[-+ ]+\+$")
+                border_indices = []
+                for i, line in enumerate(stdout_lines):
+                    if border_regex.match(line.strip()):
+                        border_indices.append(i)
+                        logging.getLogger(__name__).info(f"[DEBUG] Found table border at line {i}: {line}")
+                table_lines = None
+                # We expect: border, header, border, data..., border
+                if len(border_indices) >= 3:
+                    # Data rows are between the second and last border
+                    start = border_indices[1] + 1
+                    end = border_indices[-1]
+                    table_lines = []
+                    for j in range(start, end):
+                        l = stdout_lines[j]
+                        if l.strip().startswith('|') and ':' in l:
+                            table_lines.append(l)
+                else:
+                    # Fallback: join all lines and extract table with regex (tolerate extra columns)
+                    joined = '\n'.join(stdout_lines)
+                    m = re.search(r"(\+[-+ ]+\+\n\|[^\n]*Attack Results[^\n]*\|.*?\+[-+ ]+\+)", joined, re.DOTALL)
+                    if m:
+                        table = m.group(1)
+                        table_lines = [l for l in table.splitlines() if l.strip().startswith('|') and ':' in l]
+                if table_lines:
+                    logging.getLogger(__name__).info(f"[DEBUG] TextAttack summary table lines: {table_lines}")
+                    for row in table_lines:
+                        # Accept any row with at least two columns (| key ... | value ... |)
+                        parts = [p.strip() for p in row.strip().split('|') if p.strip()]
+                        if len(parts) < 2:
+                            logging.getLogger(__name__).info(f"[DEBUG] Skipping row (not enough columns): {row}")
+                            continue
+                        # Usually key is first, value is last
+                        raw_key = parts[0]
+                        val = parts[-1]
+                        # Remove trailing colon from key if present
+                        raw_key = raw_key.rstrip(':')
+                        # Normalize key
+                        key = raw_key.lower().replace(' ', '_').replace('.', '').replace('-', '_')
+                        # Fix common typos and variants
+                        key = key.replace('92msuccess_rate', 'attack_success_rate')
+                        key = key.replace('accuracyunder_attack', 'accuracy_under_attack')
+                        key = key.replace('average_perturbed_word_', 'avg_perturbed_word_')
+                        key = key.replace('average_perturbed_word_pct', 'avg_perturbed_word_pct')
+                        key = key.replace('average_num_words_per_input', 'avg_num_words_per_input')
+                        key = key.replace('avg_num_queries', 'avg_num_queries')
+                        key = key.replace('original_accuracy', 'original_accuracy')
+                        key = key.replace('number_of_successful_attacks', 'num_successful_attacks')
+                        key = key.replace('number_of_failed_attacks', 'num_failed_attacks')
+                        key = key.replace('number_of_skipped_attacks', 'num_skipped_attacks')
+                        key = key.replace('attack_92msuccess_rate', 'attack_success_rate')
+                        key = key.rstrip('_:')
+                        # Try to convert value to float, int, or percent
+                        try:
+                            if isinstance(val, str) and val.endswith('%'):
+                                summary_metrics[key] = float(val.replace('%','').strip()) / 100.0
+                            elif '.' in val or 'e' in val.lower():
+                                summary_metrics[key] = float(val)
+                            else:
+                                summary_metrics[key] = int(val)
+                        except Exception:
+                            summary_metrics[key] = val
+                else:
+                    logging.getLogger(__name__).warning("[DEBUG] No TextAttack summary table found in STDOUT.")
+                logging.getLogger(__name__).info(f"[DEBUG] Parsed TextAttack summary metrics: {summary_metrics}")
+                return summary_metrics
+
+            # Parse and merge TextAttack summary table metrics
+            ta_metrics = parse_textattack_summary_table(stdout_lines)
+            self.logger.info(f"[DEBUG] TextAttack summary metrics extracted: {ta_metrics}")
+            for k, v in ta_metrics.items():
+                metrics[k] = v
 
 
             # Merge metrics from output files if present
@@ -854,17 +979,20 @@ class ExperimentExecutor:
                                 if isinstance(vv, (int, float)) and kk not in metrics:
                                     metrics[kk] = vv
 
-            # Special handling for textattack: parse log.csv for attack metrics
+            # Special handling for textattack: parse log.csv for attack metrics and per-example results
             log_csv_path = working_dir / 'log.csv'
             if log_csv_path.exists():
                 import csv
                 total_attacks = 0
                 successful_attacks = 0
                 total_queries = 0
+                per_example_results = []
                 try:
                     with open(log_csv_path, 'r', encoding='utf-8') as f:
                         reader = csv.DictReader(f)
                         for row in reader:
+                            # Store each row as a per-example result
+                            per_example_results.append(dict(row))
                             total_attacks += 1
                             if row.get('result_type', '').lower() == 'successful':
                                 successful_attacks += 1
@@ -877,6 +1005,9 @@ class ExperimentExecutor:
                         metrics['num_attacks'] = total_attacks
                         metrics['num_successful_attacks'] = successful_attacks
                         metrics['avg_num_queries'] = total_queries / total_attacks if total_attacks else 0
+                    # Store per-example results in outputs
+                    outputs['per_example_results'] = per_example_results
+                    self.logger.info(f"[run_experiment] Extracted {len(per_example_results)} per-example results from log.csv")
                 except Exception as e:
                     self.logger.warning(f"Failed to parse textattack log.csv: {e}")
 
