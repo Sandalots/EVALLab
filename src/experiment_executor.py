@@ -475,15 +475,6 @@ class ExperimentExecutor:
         """
         logger.info(f"Setting up environment for {codebase_path}")
 
-        # Always install pytest in the venv if this is the TextAttack repo
-        def _should_force_pytest_install(path: Path) -> bool:
-            # Heuristic: if 'textattack' in path or package folder exists
-            if 'textattack' in str(path).lower():
-                return True
-            if (path / 'textattack').is_dir():
-                return True
-            return False
-
         # Check if virtual environment exists
         venv_path = codebase_path / 'venv'
         venv_exists = venv_path.exists()
@@ -518,26 +509,6 @@ class ExperimentExecutor:
                     logger.error(f"✗ Timeout installing requirements.txt after 30 minutes")
                     return False
 
-            # For TextAttack, ensure tqdm and filelock are installed
-            if ('textattack' in str(codebase_path).lower() or (codebase_path / 'textattack').is_dir()):
-                for extra_dep in ['tqdm', 'filelock']:
-                    logger.info(f"Ensuring {extra_dep} is installed in venv...")
-                    try:
-                        result = subprocess.run(
-                            [str(python_executable), '-m', 'pip', 'install', extra_dep],
-                            check=True,
-                            capture_output=True,
-                            text=True,
-                            timeout=300
-                        )
-                        logger.info(f"✓ Installed {extra_dep} in venv")
-                    except subprocess.CalledProcessError as e:
-                        logger.error(f"✗ Failed to install {extra_dep} in venv: {e.stderr}")
-                        return False
-                    except subprocess.TimeoutExpired:
-                        logger.error(f"✗ Timeout installing {extra_dep} in venv after 5 minutes")
-                        return False
-
         if not venv_exists:
             logger.info("Creating virtual environment...")
             # Try python3.10, then python3.11, then error if neither is found
@@ -565,27 +536,7 @@ class ExperimentExecutor:
                 return False
 
 
-        # Special handling for TextAttack on Apple Silicon (macOS arm64)
-        if (
-            ('textattack' in str(codebase_path).lower() or (codebase_path / 'textattack').is_dir())
-            and platform.system() == 'Darwin'
-            and platform.machine() == 'arm64'
-        ):
-            python_executable, _, _ = _get_venv_paths(venv_path)
-            pyver = subprocess.run([str(python_executable), '--version'], capture_output=True, text=True)
-            if not (('3.10' in pyver.stdout) or ('3.11' in pyver.stdout)):
-                logger.error('On Apple Silicon, TextAttack requires Python 3.10 or 3.11 for ML compatibility.')
-                return False
-                logger.info('Detected TextAttack on Apple Silicon. Installing tensorflow-macos, tensorflow-metal, CPU-only torch, tf-keras, and compatible protobuf...')
-            try:
-                subprocess.run([str(python_executable), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'], check=True, capture_output=True, text=True)
-                subprocess.run([str(python_executable), '-m', 'pip', 'install', 'tensorflow-macos', 'tensorflow-metal'], check=True, capture_output=True, text=True)
-                subprocess.run([str(python_executable), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cpu'], check=True, capture_output=True, text=True)
-                subprocess.run([str(python_executable), '-m', 'pip', 'install', 'tf-keras', 'protobuf<5.0.0'], check=True, capture_output=True, text=True)
-                logger.info('✓ Installed Apple Silicon ML libraries')
-            except subprocess.CalledProcessError as e:
-                logger.error(f'✗ Failed to install Apple Silicon ML libraries: {e.stderr}')
-                return False
+        # Environment setup complete
 
         # Install dependencies if not already installed
         if dependencies and not venv_ready:
@@ -656,18 +607,7 @@ class ExperimentExecutor:
         #     logger.error(f"✗ Timeout installing pytest in venv after 5 minutes")
         #     return False
 
-        # Ensure optional modules for AIX360 tests when running one.pdf
-        # Specifically, some matching tests require 'otoc'. Try to install if missing.
-        if ('aix360' in str(codebase_path).lower()) or (codebase_path / 'aix360').is_dir():
-            logger.info("Ensuring 'otoc' module is available in repo venv...")
-            try:
-                ok = ensure_module_in_venv(str(python_executable), 'otoc')
-                if ok:
-                    logger.info("✓ 'otoc' is available in venv")
-                else:
-                    logger.warning("⚠ 'otoc' not available; related tests may fail. Consider installing or skipping those tests.")
-            except Exception as e:
-                logger.warning(f"Failed to ensure 'otoc' in venv: {e}")
+        # Environment setup complete
 
         # If this is the Alibi or Active-Learning-Homology repo, always install matplotlib in its venv
         if (
@@ -806,26 +746,6 @@ class ExperimentExecutor:
         env["TF_NUM_INTEROP_THREADS"] = "1"
         env["TF_NUM_INTRAOP_THREADS"] = "1"
 
-        # For TextAttack, also set additional env vars and args to ensure single process
-        is_textattack = (
-            'textattack' in str(config.script_path).lower() or 'textattack' in str(config.working_dir).lower()
-        )
-        if is_textattack:
-            env["TOKENIZERS_PARALLELISM"] = "false"
-            env["PYTHONWARNINGS"] = "ignore"
-            env["OPENBLAS_NUM_THREADS"] = "1"
-            env["NUMEXPR_NUM_THREADS"] = "1"
-            env["VECLIB_MAXIMUM_THREADS"] = "1"
-            env["IN_PARALLEL"] = "0"
-            env["CUDA_VISIBLE_DEVICES"] = ""
-            # Always add --log-to-csv log.csv if not present
-            if config.args is not None:
-                if not any(a.startswith('--log-to-csv') for a in config.args):
-                    config.args = config.args + ['--log-to-csv', 'log.csv']
-                # Also add --num_workers=1 if not present
-                if '--num_workers' not in ' '.join(config.args):
-                    config.args = config.args + ['--num_workers=1']
-
         # Set working directory to script's parent
         working_dir = config.working_dir if config.working_dir else script_path.parent
 
@@ -849,43 +769,8 @@ class ExperimentExecutor:
                 )
             elif is_shell_script:
                 venv_python = python_cmd if python_cmd else 'python3'
-                # Auto-install tensorflow_hub/tensorflow if textattack is present in the script
-                try:
-                    with open(script_path, 'r') as f:
-                        script_content = f.read()
-                    if 'textattack' in script_content:
-                        self.logger.info("[run_experiment] Ensuring tensorflow_hub and tensorflow are installed in venv...")
-                        ensure_tensorflow_hub(venv_python)
-                except Exception as e:
-                    self.logger.warning(f"[run_experiment] Could not check for textattack in script: {e}")
-                # Auto-download required NLTK data before running textattack
-                try:
-                    import subprocess as _subp
-                    self.logger.info("[run_experiment] Ensuring required NLTK data is installed in venv...")
-                    _subp.run([
-                        venv_python, '-m', 'nltk.downloader',
-                        'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng', 'universal_tagset', 'punkt'
-                    ], check=False)
-                except Exception as e:
-                    self.logger.warning(f"[run_experiment] Failed to auto-download NLTK data: {e}")
-
-                rewritten_lines = []
-                try:
-                    with open(script_path, 'r') as f:
-                        for line in f:
-                            if line.strip().startswith('textattack '):
-                                rewritten_lines.append(line.replace('textattack', f'{venv_python} -m textattack', 1))
-                            else:
-                                rewritten_lines.append(line)
-                    import tempfile
-                    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.sh') as tf:
-                        tf.writelines(rewritten_lines)
-                        temp_script_path = tf.name
-                except Exception as e:
-                    self.logger.error(f"Failed to rewrite shell script for textattack: {e}")
-                    temp_script_path = str(script_path)
-                cmd = ['bash', temp_script_path] + config.args
-                self.logger.info(f"[run_experiment] [PRE] About to run shell script: {' '.join(cmd)}")
+                cmd = ['bash', str(script_path)] + config.args
+                self.logger.info(f"[run_experiment] Running shell script: {' '.join(cmd)}")
                 try:
                     proc = subprocess.Popen(
                         cmd,
@@ -896,9 +781,9 @@ class ExperimentExecutor:
                         text=True,
                         bufsize=1
                     )
-                    self.logger.info(f"[run_experiment] [POST] Shell script process started successfully.")
+                    self.logger.info(f"[run_experiment] Shell script process started successfully.")
                 except Exception as e:
-                    self.logger.error(f"[run_experiment] [ERROR] Failed to start shell script: {e}")
+                    self.logger.error(f"[run_experiment] Failed to start shell script: {e}")
                     raise
             else:
                 cmd = [python_cmd, str(script_path)] + config.args
@@ -1019,87 +904,6 @@ class ExperimentExecutor:
                             except Exception:
                                 continue
 
-            # --- TextAttack summary table parsing ---
-            def parse_textattack_summary_table(stdout_lines):
-                """Parse the TextAttack-style summary table from STDOUT and return a dict of metrics."""
-                import logging
-                import re
-                summary_metrics = {}
-                import re
-                border_regex = re.compile(r"^\+[-+ ]+\+$")
-                border_indices = []
-                for i, line in enumerate(stdout_lines):
-                    if border_regex.match(line.strip()):
-                        border_indices.append(i)
-                        logging.getLogger(__name__).info(f"[DEBUG] Found table border at line {i}: {line}")
-                table_lines = None
-                # We expect: border, header, border, data..., border
-                if len(border_indices) >= 3:
-                    # Data rows are between the second and last border
-                    start = border_indices[1] + 1
-                    end = border_indices[-1]
-                    table_lines = []
-                    for j in range(start, end):
-                        l = stdout_lines[j]
-                        if l.strip().startswith('|') and ':' in l:
-                            table_lines.append(l)
-                else:
-                    # Fallback: join all lines and extract table with regex (tolerate extra columns)
-                    joined = '\n'.join(stdout_lines)
-                    m = re.search(r"(\+[-+ ]+\+\n\|[^\n]*Attack Results[^\n]*\|.*?\+[-+ ]+\+)", joined, re.DOTALL)
-                    if m:
-                        table = m.group(1)
-                        table_lines = [l for l in table.splitlines() if l.strip().startswith('|') and ':' in l]
-                if table_lines:
-                    logging.getLogger(__name__).info(f"[DEBUG] TextAttack summary table lines: {table_lines}")
-                    for row in table_lines:
-                        # Accept any row with at least two columns (| key ... | value ... |)
-                        parts = [p.strip() for p in row.strip().split('|') if p.strip()]
-                        if len(parts) < 2:
-                            logging.getLogger(__name__).info(f"[DEBUG] Skipping row (not enough columns): {row}")
-                            continue
-                        # Usually key is first, value is last
-                        raw_key = parts[0]
-                        val = parts[-1]
-                        # Remove trailing colon from key if present
-                        raw_key = raw_key.rstrip(':')
-                        # Normalize key
-                        key = raw_key.lower().replace(' ', '_').replace('.', '').replace('-', '_')
-                        # Fix common typos and variants
-                        key = key.replace('92msuccess_rate', 'attack_success_rate')
-                        key = key.replace('accuracyunder_attack', 'accuracy_under_attack')
-                        key = key.replace('average_perturbed_word_', 'avg_perturbed_word_')
-                        key = key.replace('average_perturbed_word_pct', 'avg_perturbed_word_pct')
-                        key = key.replace('average_num_words_per_input', 'avg_num_words_per_input')
-                        key = key.replace('avg_num_queries', 'avg_num_queries')
-                        key = key.replace('original_accuracy', 'original_accuracy')
-                        key = key.replace('number_of_successful_attacks', 'num_successful_attacks')
-                        key = key.replace('number_of_failed_attacks', 'num_failed_attacks')
-                        key = key.replace('number_of_skipped_attacks', 'num_skipped_attacks')
-                        key = key.replace('attack_92msuccess_rate', 'attack_success_rate')
-                        key = key.rstrip('_:')
-                        # Try to convert value to float, int, or percent
-                        try:
-                            if isinstance(val, str) and val.endswith('%'):
-                                summary_metrics[key] = float(val.replace('%','').strip()) / 100.0
-                            elif '.' in val or 'e' in val.lower():
-                                summary_metrics[key] = float(val)
-                            else:
-                                summary_metrics[key] = int(val)
-                        except Exception:
-                            summary_metrics[key] = val
-                else:
-                    logging.getLogger(__name__).warning("[DEBUG] No TextAttack summary table found in STDOUT.")
-                logging.getLogger(__name__).info(f"[DEBUG] Parsed TextAttack summary metrics: {summary_metrics}")
-                return summary_metrics
-
-            # Parse and merge TextAttack summary table metrics
-            ta_metrics = parse_textattack_summary_table(stdout_lines)
-            self.logger.info(f"[DEBUG] TextAttack summary metrics extracted: {ta_metrics}")
-            for k, v in ta_metrics.items():
-                metrics[k] = v
-
-
             # Merge metrics from output files if present
             for out in outputs.values():
                 if isinstance(out, dict):
@@ -1110,38 +914,6 @@ class ExperimentExecutor:
                             for kk, vv in v.items():
                                 if isinstance(vv, (int, float)) and kk not in metrics:
                                     metrics[kk] = vv
-
-            # Special handling for textattack: parse log.csv for attack metrics and per-example results
-            log_csv_path = working_dir / 'log.csv'
-            if log_csv_path.exists():
-                import csv
-                total_attacks = 0
-                successful_attacks = 0
-                total_queries = 0
-                per_example_results = []
-                try:
-                    with open(log_csv_path, 'r', encoding='utf-8') as f:
-                        reader = csv.DictReader(f)
-                        for row in reader:
-                            # Store each row as a per-example result
-                            per_example_results.append(dict(row))
-                            total_attacks += 1
-                            if row.get('result_type', '').lower() == 'successful':
-                                successful_attacks += 1
-                            try:
-                                total_queries += int(row.get('num_queries', 0))
-                            except Exception:
-                                pass
-                    if total_attacks > 0:
-                        metrics['attack_success_rate'] = successful_attacks / total_attacks
-                        metrics['num_attacks'] = total_attacks
-                        metrics['num_successful_attacks'] = successful_attacks
-                        metrics['avg_num_queries'] = total_queries / total_attacks if total_attacks else 0
-                    # Store per-example results in outputs
-                    outputs['per_example_results'] = per_example_results
-                    self.logger.info(f"[run_experiment] Extracted {len(per_example_results)} per-example results from log.csv")
-                except Exception as e:
-                    self.logger.warning(f"Failed to parse textattack log.csv: {e}")
 
             # If this was a pytest run, also parse test results
             if is_test_script:

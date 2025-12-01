@@ -189,17 +189,7 @@ class ResultEvaluator:
           4. codebase_path/complete_results.json (fallback)
         """
         import os
-        # 0. Explicit TextAttack repo path preference
-        explicit_textattack = Path('papers/codebases/TextAttack/paper_metrics.json')
-        logger.debug(f"[DEBUG] Checking explicit TextAttack baseline at: {explicit_textattack}")
-        if explicit_textattack.exists():
-            try:
-                with open(explicit_textattack, 'r') as f:
-                    logger.info(f"✓ Using paper_metrics.json as baseline (explicit path): {explicit_textattack}")
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load paper_metrics.json from explicit TextAttack path: {e}")
-        # 1. Check for paper_metrics.json in experiment directory
+        # Check for paper_metrics.json in experiment directory
         paper_metrics_path = codebase_path / 'paper_metrics.json'
         logger.debug(f"[DEBUG] Checking for paper_metrics.json in experiment directory: {paper_metrics_path}")
         if paper_metrics_path.exists():
