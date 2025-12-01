@@ -13,7 +13,7 @@ experiment:
   max_retries: 2
   use_venv: true
   random_seed: 47 
-  set_environment_seeds: true 
+  set_environment_seeds: true
 
 evaluation:
   threshold: 0.05 
@@ -25,4 +25,4 @@ evaluation:
     - loss
 
 paths:
-  output_dir: "./outputs"
+  output_dir: "../outputs"
