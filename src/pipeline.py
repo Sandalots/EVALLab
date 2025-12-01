@@ -1271,9 +1271,39 @@ class ReproductionAgent:
         results = []
 
 
-        # Special handling: if this is an AIX360 codebase, run both RBM and SHAP metrics scripts
+        # Special handling: if this is an AIX360 codebase, run RBM test files to generate metrics
         if 'aix360' in str(codebase_info.path).lower():
-            # Run RBM metrics script
+            logger.info("Detected AIX360 codebase - running RBM tests to generate metrics")
+            
+            # Run RBM test files that generate metrics
+            rbm_test_files = [
+                'tests/rbm/test_Linear_Rule_Regression.py',
+                'tests/rbm/test_Logistic_Rule_Regression.py',
+                'tests/rbm/test_Boolean_Rule_CG.py',
+                'tests/rbm/test_Feature_Binarizer_From_Trees.py'
+            ]
+            
+            for test_file in rbm_test_files:
+                test_path = codebase_info.path / test_file
+                if test_path.exists():
+                    logger.info(f"  Running RBM test: {test_file}")
+                    config = ExperimentConfig(
+                        script_path=test_path,
+                        args=[],
+                        env_vars={},
+                        working_dir=codebase_info.path,
+                        timeout=self.config['experiment']['timeout']
+                    )
+                    result = self.experiment_executor.run_experiment(config)
+                    results.append(result)
+                    if result.success:
+                        logger.info(f"    ✓ Success (duration: {result.duration:.2f}s)")
+                    else:
+                        logger.warning(f"    ✗ Failed: {result.stderr[:200] if result.stderr else 'Unknown error'}")
+                else:
+                    logger.warning(f"  Test file not found: {test_file}")
+            
+            # If old-style run scripts exist, run them too
             rbm_metrics_script = codebase_info.path / 'run_rbm_metrics.py'
             if rbm_metrics_script.exists():
                 logger.info(f"Running AIX360 RBM metrics script: {rbm_metrics_script}")
@@ -1291,7 +1321,7 @@ class ReproductionAgent:
                 else:
                     logger.warning(f"  ✗ RBM Failed: {result.stderr[:200]}")
             
-            # Run SHAP metrics script
+            # Run SHAP metrics script if it exists
             shap_metrics_script = codebase_info.path / 'run_shap_metrics.py'
             if shap_metrics_script.exists():
                 logger.info(f"Running AIX360 SHAP metrics script: {shap_metrics_script}")

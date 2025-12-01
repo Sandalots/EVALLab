@@ -1145,13 +1145,30 @@ class ExperimentExecutor:
                     except Exception as e:
                         self.logger.warning(f"[run_experiment] Could not read existing complete_results.json: {e}")
                 
-                # Merge new metrics with existing (new metrics take precedence)
-                merged_metrics = {**existing_metrics, **metrics}
+                # Smart merge: preserve existing experiment metrics, only update test-related fields
+                merged_metrics = existing_metrics.copy()
+                
+                # Test-related fields that can be updated
+                test_fields = {'tests_passed', 'tests_failed', 'tests_errored', 'tests_skipped', 
+                              'success', 'test_details', 'duration'}
+                
+                # If this run produced test results, update only test fields
+                is_test_run = any(k in metrics for k in {'tests_passed', 'tests_failed', 'test_details'})
+                
+                if is_test_run:
+                    # Only update test-related fields, preserve all other metrics
+                    for key, value in metrics.items():
+                        if key in test_fields:
+                            merged_metrics[key] = value
+                    self.logger.info(f"[run_experiment] Updated test results, preserved {len([k for k in existing_metrics if k not in test_fields])} experiment metrics")
+                else:
+                    # Regular experiment run - merge all metrics (new takes precedence)
+                    merged_metrics.update(metrics)
                 
                 with open(str(results_path), 'w') as f:
                     _json.dump(merged_metrics, f, indent=2)
                 outputs['complete_results.json'] = merged_metrics
-                self.logger.info(f"[run_experiment] Wrote complete_results.json: {merged_metrics}")
+                self.logger.info(f"[run_experiment] Wrote complete_results.json with {len(merged_metrics)} total fields")
             except Exception as e:
                 self.logger.error(f"[run_experiment] Failed to write complete_results.json: {e}")
 

@@ -206,8 +206,9 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
             per_example_html += "<div style='color:#888;margin-top:8px;'><i>Per-example diffs not available for this run.</i></div>"
         per_example_html += '</div>'
 
-        # Metrics iframe (always if metrics file exists)
-        if 'per_example_metrics' in files and files['per_example_metrics'].exists():
+        # Metrics iframe (skip for TextAttack as it duplicates the summary table)
+        skip_metrics_iframe = 'textattack' in paper_name_lower or 'text_attack' in paper_name_lower
+        if not skip_metrics_iframe and 'per_example_metrics' in files and files['per_example_metrics'].exists():
             metrics_iframe_html = '<div class="viz-section">'
             metrics_iframe_html += '<h2>Per-Example Metrics</h2>'
             metrics_iframe_html += f'<iframe src="{files["per_example_metrics"].name}" style="width:100%;height:400px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
