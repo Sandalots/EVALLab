@@ -90,4 +90,4 @@ else
 fi
 
 # open the dashboard to view visualizations
-./open_visualizations.sh
+./scripts/open_visualizations.sh
