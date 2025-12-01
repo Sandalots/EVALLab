@@ -177,37 +177,45 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
             img_path = files[key].name
             viz_html += f'<div class="viz-section"><h3>{caption}</h3><img src="{img_path}" style="max-width:90%;margin:20px 0;box-shadow:0 2px 8px #ccc;border-radius:8px;"></div>'
 
-    # Per-example diffs section
+    # Per-example sections (diffs + metrics iframe)
     per_example_html = ""
-    per_example_exists = 'per_example_diffs' in files and files['per_example_diffs'].exists()
-    is_empty = True
-    if per_example_exists:
-        try:
-            with open(files['per_example_diffs'], 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-            is_empty = (not content) or (content.count('<tr') <= 1)
-        except Exception as e:
-            content = ''
-            is_empty = True
-    # Hide per-example section entirely for papers that summarize per-table (e.g., decontextualisation)
+    metrics_iframe_html = ""
     paper_name_lower = str(paper_name).lower()
     skip_per_example = ('decontextualisation' in paper_name_lower or 'decontextualization' in paper_name_lower)
+
     if not skip_per_example:
+        # Diffs iframe (if present)
+        per_example_exists = 'per_example_diffs' in files and files['per_example_diffs'].exists()
+        is_empty = True
+        if per_example_exists:
+            try:
+                with open(files['per_example_diffs'], 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                is_empty = (not content) or (content.count('<tr') <= 1)
+            except Exception:
+                content = ''
+                is_empty = True
         per_example_html = '<div class="viz-section">'
         per_example_html += '<h2>Per-Example Diffs</h2>'
         if per_example_exists:
             per_example_html += f'<iframe src="{files["per_example_diffs"].name}" style="width:100%;height:300px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
             per_example_html += f'<div style="margin-top:8px;"><a href="{files["per_example_diffs"].name}" target="_blank">Open per-example diffs in new tab</a></div>'
-            # Only show warning if the file is truly empty (no <tr> at all or only header)
             if is_empty:
-                per_example_html += "<div style='color:#e67e22;margin-top:8px;'><b>Note:</b> No per-example differences detected. This likely means examples matched or the comparison was skipped.</div>"
+                per_example_html += "<div style='color:#e67e22;margin-top:8px;'><b>Note:</b> No per-example differences detected. Examples either matched or comparison was skipped.</div>"
         else:
-            # Soften/optionalize the missing message
             per_example_html += "<div style='color:#888;margin-top:8px;'><i>Per-example diffs not available for this run.</i></div>"
         per_example_html += '</div>'
+
+        # Metrics iframe (always if metrics file exists)
+        if 'per_example_metrics' in files and files['per_example_metrics'].exists():
+            metrics_iframe_html = '<div class="viz-section">'
+            metrics_iframe_html += '<h2>Per-Example Metrics</h2>'
+            metrics_iframe_html += f'<iframe src="{files["per_example_metrics"].name}" style="width:100%;height:400px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
+            metrics_iframe_html += f'<div style="margin-top:8px;"><a href="{files["per_example_metrics"].name}" target="_blank">Open per-example metrics in new tab</a></div>'
+            metrics_iframe_html += '</div>'
     else:
-        # Omit the entire section for decontextualisation
         per_example_html = ''
+        metrics_iframe_html = ''
 
     # Metrics Table (color-coded)
     table_html = ""
@@ -272,6 +280,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         {metrics_html}
         {viz_html}
         {per_example_html}
+        {metrics_iframe_html}
         {table_html}
         {log_html}
         {footer_html}

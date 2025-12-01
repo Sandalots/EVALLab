@@ -1447,7 +1447,8 @@ Provide a concise analysis (3-4 paragraphs)."""
 
     def generate_visualizations(self, comparisons: List[ComparisonResult],
                                 output_dir: Path,
-                                paper_name: str = "Research Paper") -> Dict[str, Path]:
+                                paper_name: str = "Research Paper",
+                                codebase_path: Path = None) -> Dict[str, Path]:
         """
         Generate plots, tables, and graphs comparing agent results to baseline.
 
@@ -1762,6 +1763,105 @@ Provide a concise analysis (3-4 paragraphs)."""
         per_example_diffs_path = output_dir / 'per_example_diffs.html'
         if per_example_diffs_path.exists():
             generated_files['per_example_diffs'] = per_example_diffs_path
+
+        # Generate a standalone per_example_metrics.html (always, if any comparison rows exist)
+        # This provides an iframe-able metrics view even when no per-example diffs are available.
+        # ENHANCED: Also includes pytest test details if available.
+        try:
+            metrics_rows = []
+            if not df.empty:
+                # Build HTML table rows similar to dashboard inline table
+                for _, row in df.iterrows():
+                    pd_val = pd.to_numeric(row.get('percent_difference'), errors='coerce')
+                    diff_class = 'diff-pos' if (pd_val >= 0 if not pd.isna(pd_val) else False) else 'diff-neg'
+                    base_val = pd.to_numeric(row.get('baseline_value'), errors='coerce')
+                    repr_val = pd.to_numeric(row.get('reproduced_value'), errors='coerce')
+                    base_str = f"{base_val:.4f}" if not pd.isna(base_val) else str(row.get('baseline_value', 'N/A'))
+                    repr_str = f"{repr_val:.4f}" if not pd.isna(repr_val) else str(row.get('reproduced_value', 'N/A'))
+                    pd_str = f"{pd_val:+.2f}%" if not pd.isna(pd_val) else str(row.get('percent_difference', 'N/A'))
+                    status = 'PASS' if row.get('within_threshold') else 'FAIL'
+                    status_class = 'status-pass' if row.get('within_threshold') else 'status-fail'
+                    metrics_rows.append(
+                        f"<tr>"
+                        f"<td>{row.get('configuration', 'N/A')}</td>"
+                        f"<td>{row.get('metric_name', 'N/A')}</td>"
+                        f"<td>{base_str}</td>"
+                        f"<td>{repr_str}</td>"
+                        f"<td class='{diff_class}'>{pd_str}</td>"
+                        f"<td class='{status_class}'>{status}</td>"
+                        f"</tr>"
+                    )
+            
+            # Add pytest test details section if available (from complete_results.json -> test_details)
+            pytest_section = ""
+            try:
+                # Look for test_details in comparisons (stored from complete_results.json)
+                test_details = []
+                # Try to find test_details from the codebase complete_results.json
+                if codebase_path:
+                    complete_results_path = codebase_path / 'complete_results.json'
+                    if complete_results_path.exists():
+                        with open(complete_results_path, 'r') as f:
+                            cr_data = json.load(f)
+                            if 'test_details' in cr_data:
+                                test_details = cr_data.get('test_details', [])
+                
+                if test_details:
+                    pytest_rows = []
+                    for test in test_details:
+                        outcome = test.get('outcome', 'UNKNOWN')
+                        test_name = test.get('test_name', 'unknown_test')
+                        if outcome == 'PASSED':
+                            outcome_class = 'status-pass'
+                            outcome_emoji = '✓'
+                        elif outcome == 'FAILED':
+                            outcome_class = 'status-fail'
+                            outcome_emoji = '✗'
+                        elif outcome == 'SKIPPED':
+                            outcome_class = 'status-skip'
+                            outcome_emoji = '⊘'
+                        else:
+                            outcome_class = 'status-error'
+                            outcome_emoji = '⚠'
+                        pytest_rows.append(
+                            f"<tr><td>{test_name}</td><td class='{outcome_class}'>{outcome_emoji} {outcome}</td></tr>"
+                        )
+                    pytest_section = (
+                        "<h3 style='margin-top:30px;'>Pytest Test Results</h3>"
+                        "<p style='color:#555;font-size:13px;'>Individual test outcomes captured by EVALLab during experiment execution.</p>"
+                        "<table class='metrics-table' style='max-width:600px;'>"
+                        "<tr><th>Test Name</th><th>Outcome</th></tr>"
+                        "{rows}"
+                        "</table>"
+                    ).format(rows="".join(pytest_rows))
+            except Exception as e:
+                logger.debug(f"Could not extract pytest test details: {e}")
+            
+            # Build HTML with escaped braces (double {{ }}) to avoid f-string evaluation issues
+            download_link = ""
+            if 'detailed_csv' in generated_files:
+                download_link = f"<p style='margin-top:10px;'><a href='{generated_files['detailed_csv'].name}' target='_blank'>Download detailed_comparison.csv</a></p>"
+            rows_html = "".join(metrics_rows) if metrics_rows else "<tr><td colspan='6' style='padding:12px;'>No metrics available.</td></tr>"
+            metrics_table_html = (
+                "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Per-Example Metrics - {paper}</title>"
+                "<style>body{{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;margin:16px;background:#f9f9f9;}}"
+                ".metrics-table{{border-collapse:collapse;width:100%;}} .metrics-table th,.metrics-table td{{border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:center;}}"
+                ".metrics-table th{{background:#eaf1fb;}} .metrics-table tr:nth-child(even){{background:#f4f8fc;}}"
+                ".status-pass{{color:#27ae60;font-weight:bold;}} .status-fail{{color:#e74c3c;font-weight:bold;}}"
+                ".status-skip{{color:#f39c12;font-weight:bold;}} .status-error{{color:#e74c3c;font-weight:bold;}}"
+                ".diff-pos{{color:#2980b9;}} .diff-neg{{color:#e67e22;}}"
+                "</style></head><body>"
+                "<h2>Per-Example Metrics for {paper}</h2>"
+                "<p style='color:#555;font-size:13px;'>This table lists all metric comparisons reproduced by EVALLab. Baseline 'N/A' indicates no matching baseline metric was found.</p>"
+                "<table class='metrics-table'><tr><th>Configuration</th><th>Metric</th><th>Baseline</th><th>Reproduced</th><th>Diff (%)</th><th>Status</th></tr>{rows}</table>{download}{pytest}</body></html>"
+            ).format(paper=paper_name, rows=rows_html, download=download_link, pytest=pytest_section)
+            pem_path = output_dir / 'per_example_metrics.html'
+            with open(pem_path, 'w', encoding='utf-8') as f:
+                f.write(metrics_table_html)
+            generated_files['per_example_metrics'] = pem_path
+            logger.info(f"✓ Generated per-example metrics HTML: {pem_path}")
+        except Exception as e:
+            logger.warning(f"Failed to generate per_example_metrics.html: {e}")
 
         # Generate index HTML
         html_content = self._generate_visualization_index(

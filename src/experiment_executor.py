@@ -39,6 +39,41 @@ def ensure_tensorflow_hub(venv_python):
         print(f"[INFO] Installing missing packages in venv: {pkgs_to_install}")
         subprocess.run([venv_python, "-m", "pip", "install"] + pkgs_to_install, check=True)
 
+def ensure_module_in_venv(venv_python: str, module_name: str, package_name: Optional[str] = None, timeout: int = 600) -> bool:
+    """Ensure a Python module is importable in the given venv.
+
+    If not present, attempt to install via pip using `package_name` (or `module_name` if omitted).
+    Returns True if the module is available after the operation, else False.
+    """
+    import subprocess
+    check_code = (
+        "import importlib.util; "
+        f"print(importlib.util.find_spec('{module_name}') is not None)"
+    )
+    try:
+        result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
+        available = result.stdout.strip().splitlines()[0].strip() == 'True'
+    except Exception:
+        available = False
+    if available:
+        return True
+    # Try install
+    pkg = package_name or module_name
+    try:
+        subprocess.run([venv_python, "-m", "pip", "install", pkg], check=True, capture_output=True, text=True, timeout=timeout)
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to install {pkg} in venv: {e.stderr}")
+        return False
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Timeout installing {pkg} in venv after {timeout/60:.0f} minutes")
+        return False
+    # Re-check
+    try:
+        result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
+        return result.stdout.strip().splitlines()[0].strip() == 'True'
+    except Exception:
+        return False
+
 def _get_python_executable():
     """Get the appropriate Python executable for the current platform."""
     if platform.system() == 'Windows':
@@ -607,6 +642,19 @@ class ExperimentExecutor:
             logger.error(f"✗ Timeout installing pytest in venv after 5 minutes")
             return False
 
+        # Ensure optional modules for AIX360 tests when running one.pdf
+        # Specifically, some matching tests require 'otoc'. Try to install if missing.
+        if ('aix360' in str(codebase_path).lower()) or (codebase_path / 'aix360').is_dir():
+            logger.info("Ensuring 'otoc' module is available in repo venv...")
+            try:
+                ok = ensure_module_in_venv(str(python_executable), 'otoc')
+                if ok:
+                    logger.info("✓ 'otoc' is available in venv")
+                else:
+                    logger.warning("⚠ 'otoc' not available; related tests may fail. Consider installing or skipping those tests.")
+            except Exception as e:
+                logger.warning(f"Failed to ensure 'otoc' in venv: {e}")
+
         # If this is the Alibi or Active-Learning-Homology repo, always install matplotlib in its venv
         if (
             'alibi' in str(codebase_path).lower() or (codebase_path / 'alibi').is_dir() or
@@ -772,8 +820,8 @@ class ExperimentExecutor:
             import threading
             import json as _json
             if is_test_script:
-                # Run with pytest and capture output
-                pytest_cmd = [python_cmd, '-m', 'pytest', str(script_path), '--maxfail=100', '--disable-warnings', '-q', '--tb=short']
+                # Run with pytest and capture output (use -v for verbose test names)
+                pytest_cmd = [python_cmd, '-m', 'pytest', str(script_path), '--maxfail=100', '--disable-warnings', '-v', '--tb=short']
                 self.logger.info(f"[run_experiment] Running pytest: {' '.join(pytest_cmd)}")
                 proc = subprocess.Popen(
                     pytest_cmd,
@@ -1031,7 +1079,8 @@ class ExperimentExecutor:
 
             # If this was a pytest run, also parse test results
             if is_test_script:
-                passed = failed = errors = 0
+                passed = failed = errors = skipped = 0
+                test_details = []
                 for line in stdout_lines + stderr_lines:
                     m = re.search(r'(\d+)\s+passed', line)
                     if m:
@@ -1042,11 +1091,27 @@ class ExperimentExecutor:
                     m = re.search(r'(\d+)\s+error', line)
                     if m:
                         errors += int(m.group(1))
+                    m = re.search(r'(\d+)\s+skipped', line)
+                    if m:
+                        skipped += int(m.group(1))
+                    # Extract test names and outcomes
+                    # Pattern for verbose pytest: "test_file.py::TestClass::test_name PASSED"
+                    test_match = re.search(r'::(test_\w+)\s+(PASSED|FAILED|SKIPPED|ERROR)', line)
+                    if test_match:
+                        test_details.append({
+                            'test_name': test_match.group(1),
+                            'outcome': test_match.group(2).upper()
+                        })
                 metrics['tests_passed'] = passed
                 metrics['tests_failed'] = failed
                 metrics['tests_errored'] = errors
+                metrics['tests_skipped'] = skipped
                 metrics['success'] = (failed == 0 and errors == 0)
                 metrics['duration'] = duration
+                if test_details:
+                    metrics['test_details'] = test_details
+                    outputs['test_details'] = test_details
+                    self.logger.info(f"[run_experiment] Captured {len(test_details)} test outcomes for per-example metrics")
 
             # Write all found metrics to complete_results.json
             try:

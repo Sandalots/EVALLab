@@ -889,7 +889,8 @@ class ReproductionAgent:
             viz_files = self.result_evaluator.generate_visualizations(
                 comparisons,
                 output_dir=viz_dir,
-                paper_name=paper_name
+                paper_name=paper_name,
+                codebase_path=codebase_info.path  # Pass codebase path for test_details
             )
             logger.info(f"✓ Generated {len(viz_files)} visualization files")
             logger.info(

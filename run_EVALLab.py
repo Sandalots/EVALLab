@@ -328,6 +328,7 @@ def main():
                     'summary_statistics': output_dir / 'summary_statistics.png',
                     'detailed_csv': output_dir / 'detailed_comparison.csv',
                     'per_example_diffs': output_dir / 'per_example_diffs.html',
+                        'per_example_metrics': output_dir / 'per_example_metrics.html',
                     'visualizations_html': output_dir / 'visualizations.html',
                     'resource_usage': output_dir / 'resource_usage.json',
                     'agent_log': output_dir / 'agent_execution.log',
