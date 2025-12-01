@@ -954,16 +954,24 @@ JSON:"""
                 by_exp[exp] = []
             by_exp[exp].append(comp)
 
+        def _fmt_float(val):
+            try:
+                return f"{float(val):.4f}"
+            except (TypeError, ValueError):
+                return str(val)
+
         for exp_set, comps in by_exp.items():
             summary += f"\n{exp_set}:\n"
             for comp in comps[:5]:
                 config = '/'.join(comp.configuration.split('/')[1:3])
-                summary += f"  - {config}/{comp.metric_name}: baseline={comp.baseline_value:.4f}, "
+                baseline_str = _fmt_float(comp.baseline_value)
+                reproduced_str = _fmt_float(comp.reproduced_value)
+                summary += f"  - {config}/{comp.metric_name}: baseline={baseline_str}, "
                 try:
                     pct = float(comp.percent_difference)
-                    summary += f"reproduced={comp.reproduced_value:.4f} ({pct:+.2f}%)\n"
+                    summary += f"reproduced={reproduced_str} ({pct:+.2f}%)\n"
                 except (TypeError, ValueError):
-                    summary += f"reproduced={comp.reproduced_value:.4f} (N/A)\n"
+                    summary += f"reproduced={reproduced_str} (N/A)\n"
 
         system_prompt = """You are an expert in machine learning research and experiment reproduction.
 Analyze the differences between baseline and reproduced results across multiple experimental configurations."""
