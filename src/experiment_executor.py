@@ -387,42 +387,46 @@ class ExperimentExecutor:
     # PART 2: ENVIRONMENT SETUP & VALIDATION
     # ============================================================================
 
-    def validate_data_integrity(self, codebase_path: Path) -> Dict[str, Any]:
+    def validate_data_integrity(self, codebase_path: Path, validation_config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Validate dataset files before running experiments.
 
         Args:
             codebase_path: Path to codebase
+            validation_config: Optional dict with validation rules from YAML config
 
         Returns:
             Dict with validation results
         """
-        data_dir = codebase_path / "data"
         results = {
             'valid': True,
             'warnings': [],
             'file_stats': {}
         }
 
+        # If no validation config provided, skip validation
+        if not validation_config:
+            return results
+
+        data_dir = codebase_path / validation_config.get('data_dir', 'data')
+        
         if not data_dir.exists():
             results['valid'] = False
             results['warnings'].append(f"Data directory not found: {data_dir}")
             return results
 
-        # Expected data files with minimum requirements
-        expected_files = {
-            'qa.jsonl': {'min_lines': 500, 'description': 'Q&A dataset'},
-            'papers.jsonl': {'min_lines': 50, 'description': 'Papers corpus'},
-            'qa-unlabeled.jsonl': {'min_lines': 1000, 'description': 'Unlabeled Q&A'},
-            'qa-augmented-answers.jsonl': {'min_lines': 500, 'description': 'Augmented answers'}
-        }
-
-        for filename, requirements in expected_files.items():
+        # Get required files from config
+        required_files = validation_config.get('required_files', [])
+        
+        for file_config in required_files:
+            filename = file_config['filename']
+            min_lines = file_config.get('min_lines', 0)
+            description = file_config.get('description', filename)
             filepath = data_dir / filename
 
             if not filepath.exists():
                 results['warnings'].append(
-                    f"Missing {requirements['description']}: {filename}")
+                    f"Missing {description}: {filename}")
                 continue
 
             try:
@@ -436,10 +440,10 @@ class ExperimentExecutor:
                     'exists': True
                 }
 
-                if line_count < requirements['min_lines']:
+                if min_lines > 0 and line_count < min_lines:
                     results['warnings'].append(
                         f"⚠️  {filename} has only {line_count} lines "
-                        f"(expected >{requirements['min_lines']})"
+                        f"(expected >{min_lines})"
                     )
                 else:
                     logger.info(

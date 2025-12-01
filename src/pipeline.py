@@ -641,20 +641,28 @@ class ReproductionAgent:
             f"✓ Found {len(codebase_info.entry_points)} potential entry points")
         logger.info(f"✓ Found {len(codebase_info.dependencies)} dependencies")
 
-        # Validate data integrity before running experiments
-        logger.info("\n[Stage 3.5/4] Validating data integrity...")
-        validation_results = self.experiment_executor.validate_data_integrity(
-            codebase_info.path)
+        # Get repo-specific configuration for validation
+        from src.helper.repo_config import get_repo_config
+        repo_config = get_repo_config(codebase_info.path)
+        validation_config = repo_config.data_validation if repo_config else None
 
-        if not validation_results['valid']:
-            logger.warning(
-                "⚠️  Data validation failed - experiments may not reproduce correctly")
+        # Validate data integrity before running experiments (if configured)
+        if validation_config:
+            logger.info("\n[Stage 3.5/4] Validating data integrity...")
+            validation_results = self.experiment_executor.validate_data_integrity(
+                codebase_info.path, validation_config)
 
-        if validation_results['file_stats']:
-            total_size = sum(s.get('size_mb', 0)
-                             for s in validation_results['file_stats'].values())
-            logger.info(
-                f"✓ Data validation complete - {len(validation_results['file_stats'])} files, {total_size:.1f}MB total")
+            if not validation_results['valid']:
+                logger.warning(
+                    "⚠️  Data validation failed - experiments may not reproduce correctly")
+
+            if validation_results['file_stats']:
+                total_size = sum(s.get('size_mb', 0)
+                                 for s in validation_results['file_stats'].values())
+                logger.info(
+                    f"✓ Data validation complete - {len(validation_results['file_stats'])} files, {total_size:.1f}MB total")
+        else:
+            logger.debug("No data validation configured for this repository")
 
         # Run experiments
         logger.info("\n[Stage 3.6/4] Running experiments...")

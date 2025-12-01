@@ -51,6 +51,9 @@ class RepoConfig:
     outputs: Dict[str, str] = field(default_factory=dict)
     """Output file locations"""
     
+    data_validation: Dict[str, Any] = field(default_factory=dict)
+    """Data validation configuration (optional)"""
+    
     @classmethod
     def from_yaml(cls, yaml_path: Path) -> 'RepoConfig':
         """Load configuration from YAML file."""
@@ -65,7 +68,8 @@ class RepoConfig:
             experiments=data.get('experiments', []),
             baseline=data.get('baseline', {}),
             metrics=data.get('metrics', {}),
-            outputs=data.get('outputs', {})
+            outputs=data.get('outputs', {}),
+            data_validation=data.get('data_validation', {})
         )
 
 

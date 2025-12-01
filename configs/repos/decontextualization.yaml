@@ -47,3 +47,19 @@ metrics:
 outputs:
   results_file: "code/complete_results.json"
   report_file: "code/outputs_all_methods/report.md"
+
+data_validation:
+  data_dir: "code/data"
+  required_files:
+    - filename: "qa.jsonl"
+      min_lines: 500
+      description: "Q&A dataset"
+    - filename: "papers.jsonl"
+      min_lines: 50
+      description: "Papers corpus"
+    - filename: "qa-unlabeled.jsonl"
+      min_lines: 1000
+      description: "Unlabeled Q&A"
+    - filename: "qa-augmented-answers.jsonl"
+      min_lines: 500
+      description: "Augmented answers"

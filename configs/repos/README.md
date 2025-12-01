@@ -55,3 +55,14 @@ metrics:
 outputs:
   log_file: "log.csv"           # Expected log file location
   results_file: "complete_results.json"
+
+# Data validation (optional)
+data_validation:
+  data_dir: "data"              # Directory containing data files (relative to repo)
+  required_files:               # List of files to validate
+    - filename: "train.jsonl"
+      min_lines: 1000           # Minimum expected lines
+      description: "Training data"
+    - filename: "test.jsonl"
+      min_lines: 100
+      description: "Test data"
