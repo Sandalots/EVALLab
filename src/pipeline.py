@@ -560,6 +560,12 @@ class ReproductionAgent:
         # Convert codebase_source to Path if it's a string
         local_path = Path(codebase_source) if codebase_source else None
 
+        # Pass paper_path context to RepoRetriever for name-based fallbacks
+        try:
+            self.repo_retriever.paper_path = paper_path
+        except Exception:
+            pass
+
         codebase_path = self.repo_retriever.retrieve_code(
             github_urls=paper_content.github_urls,
             local_path=local_path

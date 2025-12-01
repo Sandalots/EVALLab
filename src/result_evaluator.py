@@ -688,14 +688,32 @@ JSON:"""
         - Remove trailing/leading slashes
         - Collapse multiple underscores
         - Collapse repeated 'root/' prefixes to a single 'root/'
+        - Strip stray ANSI color artifacts (e.g., '92m')
+        - Collapse consecutive duplicate path segments (e.g., 'a/a/x' -> 'a/x')
         """
         import re
+        # Lowercase and basic normalization
         key = key.lower().replace('-', '_').replace(' ', '').replace('@', '_at_')
+
+        # Remove ANSI escape sequences if present
+        key = re.sub(r"\x1b\[[0-9;]*m", "", key)
+        # Remove orphaned color suffix fragments like '92m', '39m', etc.
+        key = re.sub(r"\d{1,3}m", "", key)
+
+        # Normalize slashes and underscores
         key = re.sub(r'/+', '/', key)
         key = re.sub(r'_+', '_', key)
         # Collapse any sequence of two or more 'root/' at the start to a single 'root/'
         key = re.sub(r'^(root/)+', 'root/', key)
         key = key.strip('/')
+
+        # Collapse consecutive duplicate path segments (handles cases like 'outputs_all_methods/outputs_all_methods/...')
+        parts = [p for p in key.split('/') if p]
+        dedup_parts = []
+        for p in parts:
+            if not dedup_parts or dedup_parts[-1] != p:
+                dedup_parts.append(p)
+        key = '/'.join(dedup_parts)
         return key
 
     def _flatten_dict(self, d, parent_key="", sep="/"):
@@ -1479,9 +1497,37 @@ Provide a concise analysis (3-4 paragraphs)."""
             })
 
         df = pd.DataFrame(data)
+        
+        # Clean label artifacts (e.g., stray ANSI fragments like '92m') and prep numeric columns
+        def _clean_artifacts(s: str) -> str:
+            try:
+                txt = str(s)
+            except Exception:
+                return s
+            ansi_suffixes = [*(f"{i}m" for i in range(30, 38)), *(f"{i}m" for i in range(90, 98)), "39m", "0m"]
+            for suf in ansi_suffixes:
+                if suf in txt:
+                    txt = txt.replace(suf, "")
+            txt = txt.replace("\u001b", "")
+            return txt
+
+        for col in ['experiment_set', 'granularity', 'strategy', 'task_type', 'retriever', 'metric_name', 'configuration']:
+            if col in df.columns:
+                df[col] = df[col].apply(_clean_artifacts)
+
+        # Numeric columns for plotting; keep originals intact for CSV
+        df['baseline_value_num'] = pd.to_numeric(df.get('baseline_value'), errors='coerce')
+        df['reproduced_value_num'] = pd.to_numeric(df.get('reproduced_value'), errors='coerce')
+        df['percent_difference_num'] = pd.to_numeric(df.get('percent_difference'), errors='coerce')
         generated_files = {}
 
         logger.info(f"Generating visualizations for {len(df)} comparisons...")
+        
+        # Filter to matched-baseline rows for visualization (Option A)
+        df_matched = df[df['baseline_value'] != 'N/A'].copy()
+        if df_matched.empty:
+            logger.warning("All comparisons missing baseline (N/A). Visualizations will be minimal.")
+            df_matched = df.copy()
 
         # Handle empty DataFrame or missing column gracefully
         if df.empty or 'within_threshold' not in df.columns:
@@ -1490,8 +1536,8 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         # 1. Overall Performance Comparison Bar Chart
         fig, ax = plt.subplots(figsize=(13, 8))
-        within_threshold = df['within_threshold'].sum()
-        total = len(df)
+        within_threshold = df_matched['within_threshold'].sum()
+        total = len(df_matched)
         outside_threshold = total - within_threshold
 
         bars = ax.bar(['Within Threshold\n(Success)', 'Outside Threshold\n(Failed)'],
@@ -1517,7 +1563,7 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         # 2. Performance by Configuration
         fig, ax = plt.subplots(figsize=(16, 10))
-        config_stats = df.groupby(['granularity', 'strategy']).agg({
+        config_stats = df_matched.groupby(['granularity', 'strategy']).agg({
             'within_threshold': 'sum',
             'metric_name': 'count'
         }).reset_index()
@@ -1552,74 +1598,71 @@ Provide a concise analysis (3-4 paragraphs)."""
         generated_files['performance_by_configuration'] = file_path
         logger.info(f'✓ Generated: {file_path}')
 
-        # 3. Scatter Plot: Baseline vs Reproduced Values
-        fig, ax = plt.subplots(figsize=(13, 13))
+        # 3. Scatter Plot: Baseline vs Reproduced Values (numeric only)
+        df_scatter = df_matched[df_matched[['baseline_value_num', 'reproduced_value_num']].notna().all(axis=1)].copy()
+        if not df_scatter.empty:
+            fig, ax = plt.subplots(figsize=(13, 13))
 
-        # Color by whether within threshold
-        colors = df['within_threshold'].map(
-            {True: '#2ecc71', False: '#e74c3c'})
-        scatter = ax.scatter(df['baseline_value'], df['reproduced_value'],
-                             c=colors, alpha=0.6, s=50)
+            colors = df_scatter['within_threshold'].map({True: '#2ecc71', False: '#e74c3c'})
+            ax.scatter(df_scatter['baseline_value_num'], df_scatter['reproduced_value_num'],
+                       c=colors, alpha=0.6, s=50)
 
-        # Perfect reproduction line
-        max_val = max(df['baseline_value'].max(), df['reproduced_value'].max())
-        min_val = min(df['baseline_value'].min(), df['reproduced_value'].min())
-        ax.plot([min_val, max_val], [min_val, max_val],
-                'k--', label='Perfect Reproduction', linewidth=2)
+            max_val = max(df_scatter['baseline_value_num'].max(), df_scatter['reproduced_value_num'].max())
+            min_val = min(df_scatter['baseline_value_num'].min(), df_scatter['reproduced_value_num'].min())
+            ax.plot([min_val, max_val], [min_val, max_val], 'k--', label='Perfect Reproduction', linewidth=2)
 
-        # Threshold boundaries (±5%)
-        threshold = 0.05
-        ax.fill_between([min_val, max_val],
-                        [min_val * (1-threshold), max_val * (1-threshold)],
-                        [min_val * (1+threshold), max_val * (1+threshold)],
-                        alpha=0.2, color='green', label=f'±{threshold*100}% threshold')
+            threshold = 0.05
+            ax.fill_between([min_val, max_val],
+                            [min_val * (1-threshold), max_val * (1-threshold)],
+                            [min_val * (1+threshold), max_val * (1+threshold)],
+                            alpha=0.2, color='green', label=f'±{threshold*100}% threshold')
 
-        ax.set_xlabel('Baseline Value', fontsize=12)
-        ax.set_ylabel('Reproduced Value', fontsize=12)
-        ax.set_title('Baseline vs Reproduced Metrics',
-                     fontsize=14, fontweight='bold')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+            ax.set_xlabel('Baseline Value', fontsize=12)
+            ax.set_ylabel('Reproduced Value', fontsize=12)
+            ax.set_title('Baseline vs Reproduced Metrics', fontsize=14, fontweight='bold')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
 
-        file_path = output_dir / 'baseline_vs_reproduced.png'
-        plt.tight_layout()
-        plt.savefig(file_path, dpi=300, bbox_inches="tight")
-        plt.close()
-        generated_files['baseline_vs_reproduced'] = file_path
-        logger.info(f'✓ Generated: {file_path}')
+            file_path = output_dir / 'baseline_vs_reproduced.png'
+            plt.tight_layout()
+            plt.savefig(file_path, dpi=300, bbox_inches="tight")
+            plt.close()
+            generated_files['baseline_vs_reproduced'] = file_path
+            logger.info(f'✓ Generated: {file_path}')
+        else:
+            logger.warning('No numeric baseline/reproduced values available for scatter plot. Skipping.')
 
-        # 4. Distribution of Percent Differences
-        fig, ax = plt.subplots(figsize=(15, 7))
+        # 4. Distribution of Percent Differences (numeric only)
+        df_hist = df_matched[df_matched['percent_difference_num'].notna()].copy()
+        if not df_hist.empty:
+            fig, ax = plt.subplots(figsize=(15, 7))
 
-        # Cap extreme values for better visualization
-        percent_diff_capped = df['percent_difference'].clip(-50, 50)
+            percent_diff_capped = df_hist['percent_difference_num'].clip(-50, 50)
 
-        ax.hist(percent_diff_capped, bins=50,
-                color='#3498db', alpha=0.7, edgecolor='black')
-        ax.axvline(x=0, color='green', linestyle='--',
-                   linewidth=2, label='Perfect match')
-        ax.axvline(x=-5, color='orange', linestyle='--',
-                   alpha=0.7, label='±5% threshold')
-        ax.axvline(x=5, color='orange', linestyle='--', alpha=0.7)
+            ax.hist(percent_diff_capped, bins=50, color='#3498db', alpha=0.7, edgecolor='black')
+            ax.axvline(x=0, color='green', linestyle='--', linewidth=2, label='Perfect match')
+            ax.axvline(x=-5, color='orange', linestyle='--', alpha=0.7, label='±5% threshold')
+            ax.axvline(x=5, color='orange', linestyle='--', alpha=0.7)
 
-        ax.set_xlabel('Percent Difference (%)', fontsize=12)
-        ax.set_ylabel('Frequency', fontsize=12)
-        ax.set_title('Distribution of Metric Deviations',
-                     fontsize=14, fontweight='bold')
-        ax.legend()
+            ax.set_xlabel('Percent Difference (%)', fontsize=12)
+            ax.set_ylabel('Frequency', fontsize=12)
+            ax.set_title('Distribution of Metric Deviations', fontsize=14, fontweight='bold')
+            ax.legend()
 
-        file_path = output_dir / 'deviation_distribution.png'
-        plt.tight_layout()
-        plt.savefig(file_path, dpi=300, bbox_inches="tight")
-        plt.close()
-        generated_files['deviation_distribution'] = file_path
-        logger.info(f'✓ Generated: {file_path}')
+            file_path = output_dir / 'deviation_distribution.png'
+            plt.tight_layout()
+            plt.savefig(file_path, dpi=300, bbox_inches="tight")
+            plt.close()
+            generated_files['deviation_distribution'] = file_path
+            logger.info(f'✓ Generated: {file_path}')
+        else:
+            logger.warning('No numeric percent differences available for histogram. Skipping.')
 
         # 5. Heatmap: Performance by Granularity and Task Type
-        if 'granularity' in df.columns and 'task_type' in df.columns:
+        if 'granularity' in df_matched.columns and 'task_type' in df_matched.columns:
             fig, ax = plt.subplots(figsize=(13, 8))
 
-            pivot = df.pivot_table(
+            pivot = df_matched.pivot_table(
                 values='within_threshold',
                 index='granularity',
                 columns='task_type',
@@ -1641,6 +1684,11 @@ Provide a concise analysis (3-4 paragraphs)."""
             logger.info(f'✓ Generated: {file_path}')
 
         # 6. Summary Statistics Table
+        # Use numeric percent difference for aggregates if available
+        mean_abs = df_matched['percent_difference_num'].abs().mean()
+        med_abs = df_matched['percent_difference_num'].abs().median()
+        std_abs = df_matched['percent_difference_num'].std()
+
         summary_data = {
             'Metric': [
                 'Total Comparisons',
@@ -1652,13 +1700,13 @@ Provide a concise analysis (3-4 paragraphs)."""
                 'Std Dev of Deviations'
             ],
             'Value': [
-                f"{len(df)}",
-                f"{df['within_threshold'].sum()}",
-                f"{(~df['within_threshold']).sum()}",
-                f"{df['within_threshold'].mean() * 100:.2f}%",
-                f"{df['percent_difference'].abs().mean():.2f}%",
-                f"{df['percent_difference'].abs().median():.2f}%",
-                f"{df['percent_difference'].std():.2f}%"
+                f"{len(df_matched)}",
+                f"{df_matched['within_threshold'].sum()}",
+                f"{len(df_matched) - df_matched['within_threshold'].sum()}",
+                f"{df_matched['within_threshold'].mean() * 100:.2f}%",
+                f"{(0 if pd.isna(mean_abs) else mean_abs):.2f}%",
+                f"{(0 if pd.isna(med_abs) else med_abs):.2f}%",
+                f"{(0 if pd.isna(std_abs) else std_abs):.2f}%"
             ]
         }
 
@@ -1697,10 +1745,18 @@ Provide a concise analysis (3-4 paragraphs)."""
         logger.info(f'✓ Generated: {file_path}')
 
         # 7. Export detailed CSV
-        csv_path = output_dir / 'detailed_comparison.csv'
-        df.to_csv(csv_path, index=False)
-        generated_files['detailed_csv'] = csv_path
-        logger.info(f"✓ Exported detailed CSV: {csv_path}")
+        # Export matched-only and unmatched CSVs
+        csv_matched = output_dir / 'detailed_comparison.csv'
+        df_matched.to_csv(csv_matched, index=False)
+        generated_files['detailed_csv'] = csv_matched
+        logger.info(f"✓ Exported matched-only CSV: {csv_matched}")
+
+        df_unmatched = df[df['baseline_value'] == 'N/A']
+        if not df_unmatched.empty:
+            csv_unmatched = output_dir / 'detailed_unmatched.csv'
+            df_unmatched.to_csv(csv_unmatched, index=False)
+            generated_files['unmatched_csv'] = csv_unmatched
+            logger.info(f"✓ Exported unmatched CSV: {csv_unmatched}")
 
         # Add per_example_diffs.html if it exists
         per_example_diffs_path = output_dir / 'per_example_diffs.html'
