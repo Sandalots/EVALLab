@@ -19,7 +19,6 @@ import shutil
 import traceback
 from datetime import datetime
 import threading
-import json as _json
 import re
 
 
@@ -601,53 +600,6 @@ class ExperimentExecutor:
                 return False
 
 
-
-        # Pytest installation disabled - not needed for paper reproducibility testing
-        # Always install pytest in the venv after requirements
-        # logger.info("Ensuring pytest is installed in venv...")
-        # try:
-        #     result = subprocess.run(
-        #         [str(python_executable), '-m', 'pip', 'install', 'pytest'],
-        #         check=True,
-        #         capture_output=True,
-        #         text=True,
-        #         timeout=300
-        #     )
-        #     logger.info("✓ Installed pytest in venv")
-        # except subprocess.CalledProcessError as e:
-        #     logger.error(f"✗ Failed to install pytest in venv: {e.stderr}")
-        #     return False
-        # except subprocess.TimeoutExpired:
-        #     logger.error(f"✗ Timeout installing pytest in venv after 5 minutes")
-        #     return False
-
-        # Environment setup complete
-
-        # If this is the Alibi or Active-Learning-Homology repo, always install matplotlib in its venv
-        if (
-            'alibi' in str(codebase_path).lower() or (codebase_path / 'alibi').is_dir() or
-            'active-learning-homology' in str(codebase_path).lower() or (codebase_path / 'Active-Learning-Homology').is_dir()
-        ):
-            logger.info("Detected Alibi or Active-Learning-Homology repo, ensuring matplotlib is installed in venv...")
-            try:
-                result = subprocess.run(
-                    [str(python_executable), '-m', 'pip', 'install', 'matplotlib'],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=300
-                )
-                logger.info("✓ Installed matplotlib in venv")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"✗ Failed to install matplotlib in venv: {e.stderr}")
-                return False
-            except subprocess.TimeoutExpired:
-                logger.error(f"✗ Timeout installing matplotlib in venv after 5 minutes")
-                return False
-
-        logger.info("✓ Environment setup complete (venv cached if previously installed)")
-        return True
-
     # ============================================================================
     # PART 3: EXPERIMENT EXECUTION
     # ============================================================================
@@ -739,7 +691,6 @@ class ExperimentExecutor:
             python_cmd = str(Path(python_cmd).absolute())
 
 
-
         # Detect if this is a test script (pytest)
         is_test_script = (
             'tests' in str(script_path.parent)
@@ -761,7 +712,6 @@ class ExperimentExecutor:
 
         # Set working directory to script's parent
         working_dir = config.working_dir if config.working_dir else script_path.parent
-
 
         try:
 
@@ -968,7 +918,7 @@ class ExperimentExecutor:
                 if results_path.exists():
                     try:
                         with open(str(results_path), 'r') as f:
-                            existing_metrics = _json.load(f)
+                            existing_metrics = json.load(f)
                         self.logger.info(f"[run_experiment] Merging with existing complete_results.json ({len(existing_metrics)} existing metrics)")
                     except Exception as e:
                         self.logger.warning(f"[run_experiment] Could not read existing complete_results.json: {e}")
@@ -1001,7 +951,7 @@ class ExperimentExecutor:
                     merged_metrics.update(metrics)
                 
                 with open(str(results_path), 'w') as f:
-                    _json.dump(merged_metrics, f, indent=2)
+                    json.dump(merged_metrics, f, indent=2)
                 outputs['complete_results.json'] = merged_metrics
                 self.logger.info(f"[run_experiment] Wrote complete_results.json with {len(merged_metrics)} total fields")
             except Exception as e:

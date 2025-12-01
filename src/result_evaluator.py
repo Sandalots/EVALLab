@@ -452,30 +452,7 @@ class ResultEvaluator:
             flat_metrics.update(metrics)
         return flat_metrics
 
-    def compare_to_paper_metrics(self, codebase_path: Path, experiment_sets: List[ExperimentSet]) -> list:
-        """Compare all reproduced metrics to paper metrics and return a list of diffs."""
-        paper_metrics = self.load_paper_metrics(codebase_path)
-        all_metrics = self.extract_all_metrics_from_experiments(experiment_sets)
-        comparisons = []
-        for config, metrics in all_metrics.items():
-            for metric_name, reproduced_value in metrics.items():
-                if metric_name in paper_metrics:
-                    baseline_value = paper_metrics[metric_name]
-                    diff = reproduced_value - baseline_value
-                    percent_diff = 100 * diff / baseline_value if baseline_value else 0.0
-                    within = abs(percent_diff) <= self.threshold * 100
-                    comparisons.append({
-                        'configuration': config,
-                        'metric_name': metric_name,
-                        'baseline_value': baseline_value,
-                        'reproduced_value': reproduced_value,
-                        'difference': diff,
-                        'percent_difference': percent_diff,
-                        'within_threshold': within
-                    })
-        return comparisons
-
-    # ...existing code...
+    # compare_to_paper_metrics removed - functionality replaced by extract_all_metrics_from_experiments + compare_results
 
     def extract_baseline_from_paper(self, paper_content: str, codebase_path: Path = None) -> BaselineMetrics:
         """
@@ -794,10 +771,10 @@ JSON:"""
             elif str(k).count('/') < norm_reproduced[norm_key][2]:
                 norm_reproduced[norm_key] = (k, v, str(k).count('/'))
 
-        # Debug logging (only keys, not values for brevity)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"[DEBUG] Normalized baseline keys: {list(norm_baseline.keys())}")
-            logger.debug(f"[DEBUG] Normalized reproduced keys: {list(norm_reproduced.keys())}")
+        # Debug logging (only if enabled)
+        if logger.isEnabledFor(logging.DEBUG) and len(norm_baseline) < 20:
+            logger.debug(f"Baseline keys sample: {list(norm_baseline.keys())[:10]}")
+            logger.debug(f"Reproduced keys sample: {list(norm_reproduced.keys())[:10]}")
 
         matched_count = 0
         unmatched_baseline = []

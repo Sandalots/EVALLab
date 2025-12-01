@@ -536,19 +536,10 @@ class ReproductionAgent:
 
         logger.info(
             f"✓ Extracted abstract ({len(paper_content.abstract)} chars)")
-        logger.debug(f"Abstract extracted: {paper_content.abstract[:500]}{'...' if len(paper_content.abstract) > 500 else ''}")
-        if len(paper_content.abstract) < 100:
-            logger.warning("Extracted abstract is very short. Extraction may have failed or missed content.")
         logger.info(
             f"✓ Extracted methodology ({len(paper_content.methodology)} chars)")
-        logger.debug(f"Methodology extracted: {paper_content.methodology[:500]}{'...' if len(paper_content.methodology) > 500 else ''}")
-        if len(paper_content.methodology) < 100:
-            logger.warning("Extracted methodology is very short. Extraction may have failed or missed content.")
         logger.info(
             f"✓ Extracted experiments ({len(paper_content.experiments)} chars)")
-        logger.debug(f"Experiments extracted: {paper_content.experiments[:500]}{'...' if len(paper_content.experiments) > 500 else ''}")
-        if len(paper_content.experiments) < 100:
-            logger.warning("Extracted experiments section is very short. Extraction may have failed or missed content.")
 
         # Step 4: Retrieve codebase (Stage 2 - NEW UNIFIED MODULE)
         print("\n" + "="*80)
@@ -599,7 +590,7 @@ class ReproductionAgent:
                 print("\033[91m│\033[0m" + f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(78) + "\033[91m│\033[0m")
             else:
                 print("\033[91m│\033[0m" + "   ✗ GitHub URLs: None found in paper".ljust(78) + "\033[91m│\033[0m")
-                
+
             print("\033[91m└" + "─"*78 + "┘\033[0m")
             print("="*80 + "\n")
             logger.error("No codebase available!")
@@ -709,13 +700,8 @@ class ReproductionAgent:
             baseline, all_reproduced_metrics)
         logger.info(f"✓ Generated {len(comparisons)} metric comparisons")
 
-        # Per-example results only exist if experiments generated them (e.g., TextAttack log.csv)
-        # These are experiment outputs, not baselines, so we load them only if they exist
-        baseline_log = []
-        reproduced_log = []
-
         # Generate comprehensive report
-        report = self.result_evaluator.generate_report(comparisons, baseline_examples=baseline_log, reproduced_examples=reproduced_log)
+        report = self.result_evaluator.generate_report(comparisons)
         logger.info("\n" + report)
 
         # Generate summary statistics
