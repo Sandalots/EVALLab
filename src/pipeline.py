@@ -650,16 +650,54 @@ class ReproductionAgent:
             logger.info(
                 f"✓ Data validation complete - {len(validation_results['file_stats'])} files, {total_size:.1f}MB total")
 
-        # Run experiments
+        # Check if baseline exists for per-example comparison
+        baseline_dir = codebase_info.path / 'baseline'
+        baseline_log_path = baseline_dir / 'log.csv'
+        baseline_exists = baseline_log_path.exists()
+        
+        # Run experiments (twice if no baseline exists for proper comparison)
         logger.info("\n[Stage 3.6/4] Running experiments...")
-        experiment_results = self._run_experiments_unified(
-            paper_content, codebase_info)
+        
+        if not baseline_exists:
+            logger.info("ℹ️  No baseline found - will run experiment twice (baseline + comparison)")
+            
+            # First run: establish baseline
+            logger.info("  → Run 1/2: Establishing baseline...")
+            experiment_results = self._run_experiments_unified(
+                paper_content, codebase_info)
+            
+            if not experiment_results:
+                logger.error("No experiments were run successfully")
+                return {'error': 'Experiment execution failed'}
+            
+            # Save first run as baseline
+            reproduced_log_source = codebase_info.path / 'log.csv'
+            if reproduced_log_source.exists():
+                baseline_dir.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copy2(reproduced_log_source, baseline_log_path)
+                logger.info(f"  ✓ Baseline established at {baseline_log_path}")
+            
+            # Second run: for comparison
+            logger.info("  → Run 2/2: Running comparison experiment...")
+            experiment_results = self._run_experiments_unified(
+                paper_content, codebase_info)
+            
+            if not experiment_results:
+                logger.error("Second run failed")
+                return {'error': 'Experiment execution failed'}
+                
+            logger.info(f"✓ Completed {len(experiment_results)} experiments (2 runs: baseline + comparison)")
+        else:
+            logger.info("ℹ️  Baseline exists - running single experiment for comparison")
+            experiment_results = self._run_experiments_unified(
+                paper_content, codebase_info)
 
-        if not experiment_results:
-            logger.error("No experiments were run successfully")
-            return {'error': 'Experiment execution failed'}
+            if not experiment_results:
+                logger.error("No experiments were run successfully")
+                return {'error': 'Experiment execution failed'}
 
-        logger.info(f"✓ Completed {len(experiment_results)} experiments")
+            logger.info(f"✓ Completed {len(experiment_results)} experiments")
 
         # Step 6: Evaluate results (Stage 4)
         print("\n" + "="*80)
@@ -700,29 +738,63 @@ class ReproductionAgent:
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")
 
+        # --- Inject per-example metrics into the metrics dictionary ---
+        import shutil
+        baseline_dir = codebase_info.path / 'baseline'
+        baseline_log_path = baseline_dir / 'log.csv'
+        reproduced_log_source = codebase_info.path / 'log.csv'
+        
+        # Check if per-example logs exist and inject them as metrics
+        current_paper_name = str(paper_path.stem).lower() if paper_path else ""
+        skip_per_example = "decontextual" in current_paper_name
+        
+        if (not skip_per_example) and baseline_log_path.exists() and reproduced_log_source.exists():
+            try:
+                baseline_log = self._load_per_example_results(baseline_log_path)
+                reproduced_log = self._load_per_example_results(reproduced_log_source)
+                
+                # Add each per-example result as an individual metric
+                # Format: "TextAttack/per_example_{index}/result"
+                if baseline_log and reproduced_log:
+                    # Create a synthetic experiment set name for per-example results
+                    per_example_key = "TextAttack_PerExample"
+                    if per_example_key not in all_reproduced_metrics:
+                        all_reproduced_metrics[per_example_key] = {}
+                    
+                    # Add each example as a metric (1.0 for match, 0.0 for mismatch)
+                    for i, (baseline_ex, repro_ex) in enumerate(zip(baseline_log, reproduced_log)):
+                        metric_name = f"example_{i+1:03d}_match"
+                        baseline_result = baseline_ex.get('result_type', baseline_ex.get('original_text', ''))
+                        repro_result = repro_ex.get('result_type', repro_ex.get('original_text', ''))
+                        
+                        # Store as 1.0 (match) or 0.0 (mismatch) for easy comparison
+                        match_value = 1.0 if baseline_result == repro_result else 0.0
+                        
+                        # Add to reproduced metrics
+                        all_reproduced_metrics[per_example_key][metric_name] = match_value
+                        
+                        # Add to baseline metrics (always 1.0 since we expect baseline to match itself)
+                        baseline_metric_key = f"{per_example_key}/{metric_name}"
+                        baseline.metrics[baseline_metric_key] = 1.0
+                    
+                    logger.info(f"✓ Injected {len(baseline_log)} per-example metrics into comparison list")
+            except Exception as e:
+                logger.warning(f"Could not inject per-example metrics: {e}")
 
-        # Compare all reproduced metrics to baseline
+        # Compare all reproduced metrics to baseline (now includes per-example metrics)
         comparisons = self.result_evaluator.compare_results(
             baseline, all_reproduced_metrics)
         logger.info(f"✓ Generated {len(comparisons)} metric comparisons")
 
-        # --- Per-example diff integration ---
-        import shutil
+        # --- Per-example diff integration for HTML visualization ---
         # Use consistent directory name from paper_path.stem
         paper_viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
         
-        # Establish baseline: use first run as baseline for future comparisons
+        # Baseline was already established during experiment run if it didn't exist
+        # Just verify paths and copy to visualization directory
         baseline_dir = codebase_info.path / 'baseline'
         baseline_log_path = baseline_dir / 'log.csv'
         reproduced_log_source = codebase_info.path / 'log.csv'  # Current run's log.csv
-        
-        # If no baseline exists, establish current run as baseline
-        if not baseline_log_path.exists() and reproduced_log_source.exists():
-            logger.info(f"Establishing baseline for {paper_path.stem} from current run")
-            baseline_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(reproduced_log_source, baseline_log_path)
-            logger.info(f"✓ Baseline established at {baseline_log_path}")
-            logger.info("  Future runs will be compared against this baseline")
         
         reproduced_log_path = paper_viz_dir / 'log.csv'
         viz_log_dir = paper_viz_dir
@@ -818,15 +890,11 @@ class ReproductionAgent:
         print("\033[93m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
-        # Calculate per-example counts for summary stats
-        per_example_total_stats = max(len(baseline_log), len(reproduced_log)) if baseline_log and reproduced_log else 0
-        per_example_diffs_stats = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log) if baseline_log and reproduced_log else []
-        per_example_matches_stats = per_example_total_stats - len(per_example_diffs_stats) if per_example_total_stats > 0 else 0
-
+        # Per-example metrics are now injected into comparisons list, so don't pass separately
         summary_stats = self.result_evaluator.generate_summary_statistics(
             comparisons,
-            per_example_total=per_example_total_stats,
-            per_example_matches=per_example_matches_stats)
+            per_example_total=0,
+            per_example_matches=0)
         logger.info(summary_stats)
 
         # Get LLM analysis of differences

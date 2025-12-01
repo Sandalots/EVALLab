@@ -888,9 +888,7 @@ JSON:"""
                 by_experiment[exp_set] = []
             by_experiment[exp_set].append(comp)
 
-        # If per-example results are available, show per-example diffs
-        per_example_total = 0
-        per_example_matches = 0
+        # If per-example results are available, show per-example diffs table
         if baseline_examples and reproduced_examples:
             diffs = self.compare_per_example_results(baseline_examples, reproduced_examples)
             per_example_total = max(len(baseline_examples), len(reproduced_examples))
@@ -901,20 +899,14 @@ JSON:"""
             report_lines.append(f"Per-example matches: {per_example_matches}/{per_example_total}")
             report_lines.append("")
 
-        # Overall summary (including per-example metrics)
-        total_metrics = len(comparisons)
+        # Overall summary (per-example metrics are now included in comparisons)
+        total_comparisons = len(comparisons)
         within_threshold = sum(1 for c in comparisons if c.within_threshold)
-        
-        # Add per-example metrics to totals
-        total_with_examples = total_metrics + per_example_total
-        within_threshold_with_examples = within_threshold + per_example_matches
 
         report_lines.extend([
-            f"Aggregate metric comparisons: {total_metrics}",
-            f"Per-example comparisons: {per_example_total}",
-            f"Total comparisons (aggregate + per-example): {total_with_examples}",
-            f"Within threshold ({self.threshold*100}%): {within_threshold}/{total_metrics} aggregate, {per_example_matches}/{per_example_total} per-example",
-            f"Overall success rate: {within_threshold_with_examples/total_with_examples*100:.1f}%" if total_with_examples > 0 else "Overall success rate: N/A",
+            f"Total comparisons: {total_comparisons}",
+            f"Within threshold ({self.threshold*100}%): {within_threshold}/{total_comparisons}",
+            f"Overall success rate: {within_threshold/total_comparisons*100:.1f}%" if total_comparisons > 0 else "Overall success rate: N/A",
             f"Experiment sets analyzed: {len(by_experiment)}",
             "",
             "="*80
@@ -1134,29 +1126,13 @@ Provide a concise analysis (3-4 paragraphs)."""
                 f"avg diff: {avg_diff:6.2f}%"
             )
 
-        # Add per-example statistics if available
-        if per_example_total > 0:
-            lines.append("")
-            lines.append("Per-Example Results:")
-            lines.append("-" * 80)
-            lines.append(f"  Total per-example comparisons: {per_example_total}")
-            lines.append(f"  Per-example matches: {per_example_matches}")
-            lines.append(f"  Per-example mismatches: {per_example_total - per_example_matches}")
-            lines.append(f"  Per-example success rate: {per_example_matches/per_example_total*100:.1f}%")
-
-        # Add combined totals
-        aggregate_total = len(comparisons)
-        aggregate_passing = sum(1 for c in comparisons if c.within_threshold)
-        combined_total = aggregate_total + per_example_total
-        combined_passing = aggregate_passing + per_example_matches
-        
+        # Overall totals (per-example metrics are now included in comparisons)
         lines.append("")
-        lines.append("Combined Totals (Aggregate + Per-Example):")
+        lines.append("Overall Totals:")
         lines.append("-" * 80)
-        lines.append(f"  Aggregate metrics: {aggregate_passing}/{aggregate_total} pass ({aggregate_passing/aggregate_total*100:.1f}%)")
-        if per_example_total > 0:
-            lines.append(f"  Per-example: {per_example_matches}/{per_example_total} pass ({per_example_matches/per_example_total*100:.1f}%)")
-        lines.append(f"  TOTAL: {combined_passing}/{combined_total} pass ({combined_passing/combined_total*100:.1f}%)")
+        total_comparisons = len(comparisons)
+        total_passing = sum(1 for c in comparisons if c.within_threshold)
+        lines.append(f"  TOTAL: {total_passing}/{total_comparisons} pass ({total_passing/total_comparisons*100:.1f}%)")
 
         lines.append("")
         lines.append("="*80)
@@ -1607,21 +1583,16 @@ Provide a concise analysis (3-4 paragraphs)."""
         # 1. Overall Performance Comparison Bar Chart
         fig, ax = plt.subplots(figsize=(13, 8))
         
-        # Aggregate metrics
-        within_threshold_agg = df_matched['within_threshold'].sum()
-        total_agg = len(df_matched)
-        outside_threshold_agg = total_agg - within_threshold_agg
-        
-        # Add per-example metrics
-        within_threshold = within_threshold_agg + per_example_matches
-        outside_threshold = outside_threshold_agg + (per_example_total - per_example_matches)
-        total = total_agg + per_example_total
+        # All metrics (aggregate + per-example now included in df_matched)
+        within_threshold = df_matched['within_threshold'].sum()
+        total = len(df_matched)
+        outside_threshold = total - within_threshold
 
         bars = ax.bar(['Within Threshold\n(Success)', 'Outside Threshold\n(Failed)'],
                       [within_threshold, outside_threshold],
                       color=['#2ecc71', '#e74c3c'])
-        ax.set_ylabel('Number of Comparisons (Aggregate + Per-Example)', fontsize=12)
-        ax.set_title(f'EVALLab Reproducibility Performance\n({total_agg} aggregate + {per_example_total} per-example = {total} total)',
+        ax.set_ylabel('Number of Comparisons', fontsize=12)
+        ax.set_title(f'EVALLab Reproducibility Performance\n({total} total comparisons)',
                      fontsize=14, fontweight='bold')
 
         # Add percentage labels on bars
