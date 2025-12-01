@@ -764,8 +764,8 @@ JSON:"""
     def compare_results(self, baseline: BaselineMetrics,
                         reproduced: Dict[str, float]) -> List[ComparisonResult]:
         """
-        Compare reproduced results to baseline metrics, but also include all metrics from reproduced results even if missing from baseline.
-        Baseline value will be 'N/A' for those metrics, and status will be 'N/A'.
+        Compare reproduced results to baseline metrics.
+        Only compares metrics that exist in the baseline.
         """
         comparisons = []
 
@@ -795,14 +795,12 @@ JSON:"""
 
         matched_count = 0
         unmatched_baseline = []
-        matched_keys = set()
 
-        # Compare all normalized keys, including flat keys (no config path)
+        # Only compare metrics that exist in the baseline
         for norm_key, (baseline_key, baseline_value) in norm_baseline.items():
             if norm_key in norm_reproduced:
                 repro_key, reproduced_value = norm_reproduced[norm_key]
                 matched_count += 1
-                matched_keys.add(norm_key)
 
                 difference = reproduced_value - baseline_value
 
@@ -834,33 +832,13 @@ JSON:"""
             else:
                 unmatched_baseline.append(baseline_key)
 
-        # Now add all metrics from reproduced that were not in baseline
-        for norm_key, (repro_key, reproduced_value) in norm_reproduced.items():
-            if norm_key not in matched_keys:
-                # Use the key itself as configuration if no path structure
-                if '/' in repro_key:
-                    metric_name = repro_key.split('/')[-1]
-                    config = repro_key
-                else:
-                    metric_name = repro_key
-                    config = repro_key
-                comparisons.append(ComparisonResult(
-                    metric_name=metric_name,
-                    baseline_value='N/A',
-                    reproduced_value=reproduced_value,
-                    difference='N/A',
-                    percent_difference='N/A',
-                    within_threshold=False,
-                    configuration=config
-                ))
-
         # Summary logging
         logger.info(
-            f"✓ Matched {matched_count}/{len(norm_baseline)} baseline metrics (normalized key match, flat keys included)")
+            f"✓ Matched {matched_count}/{len(norm_baseline)} baseline metrics")
         if unmatched_baseline:
             logger.warning(
-                f"⚠️  {len(unmatched_baseline)} baseline metrics had no matches (after normalization)")
-            logger.debug(f"Unmatched: {unmatched_baseline[:5]}")
+                f"⚠️  {len(unmatched_baseline)} baseline metrics had no matches in reproduced results")
+            logger.debug(f"Unmatched baseline metrics: {unmatched_baseline[:10]}")
 
         return comparisons
 
