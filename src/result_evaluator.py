@@ -278,16 +278,16 @@ class ResultEvaluator:
             HTML string with <tr> rows
         """
         rows = []
-        for _, row in df.iterrows():
-            diff_class = 'diff-pos' if row['percent_difference'] >= 0 else 'diff-neg'
-            status_class = 'status-pass' if row['within_threshold'] else 'status-fail'
+        for row in df.itertuples(index=False):
+            diff_class = 'diff-pos' if row.percent_difference >= 0 else 'diff-neg'
+            status_class = 'status-pass' if row.within_threshold else 'status-fail'
             rows.append(
                 f"<tr>"
-                f"<td>{row['configuration']}</td>"
-                f"<td>{row['metric_name']}</td>"
-                f"<td>{row['baseline_value']:.4f}</td>"
-                f"<td>{row['reproduced_value']:.4f}</td>"
-                f"<td class='{diff_class}'>{row['percent_difference']:+.2f}%</td>"
+                f"<td>{row.configuration}</td>"
+                f"<td>{row.metric_name}</td>"
+                f"<td>{row.baseline_value:.4f}</td>"
+                f"<td>{row.reproduced_value:.4f}</td>"
+                f"<td class='{diff_class}'>{row.percent_difference:+.2f}%</td>"
                 f"<td class='{status_class}'>{'PASS' if row['within_threshold'] else 'FAIL'}</td>"
                 f"</tr>"
             )
@@ -1581,7 +1581,6 @@ Provide a concise analysis (3-4 paragraphs)."""
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
         generated_files['overall_performance'] = file_path
-        logger.info(f'✓ Generated: {file_path}')
 
         # 2. Performance by Configuration
         fig, ax = plt.subplots(figsize=(16, 10))
@@ -1618,7 +1617,6 @@ Provide a concise analysis (3-4 paragraphs)."""
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
         generated_files['performance_by_configuration'] = file_path
-        logger.info(f'✓ Generated: {file_path}')
 
         # 3. Scatter Plot: Baseline vs Reproduced Values (numeric only)
         df_scatter = df_matched[df_matched[['baseline_value_num', 'reproduced_value_num']].notna().all(axis=1)].copy()
@@ -1650,7 +1648,6 @@ Provide a concise analysis (3-4 paragraphs)."""
             plt.savefig(file_path, dpi=300, bbox_inches="tight")
             plt.close()
             generated_files['baseline_vs_reproduced'] = file_path
-            logger.info(f'✓ Generated: {file_path}')
         else:
             logger.warning('No numeric baseline/reproduced values available for scatter plot. Skipping.')
 
@@ -1676,7 +1673,6 @@ Provide a concise analysis (3-4 paragraphs)."""
             plt.savefig(file_path, dpi=300, bbox_inches="tight")
             plt.close()
             generated_files['deviation_distribution'] = file_path
-            logger.info(f'✓ Generated: {file_path}')
         else:
             logger.warning('No numeric percent differences available for histogram. Skipping.')
 
@@ -1703,7 +1699,6 @@ Provide a concise analysis (3-4 paragraphs)."""
             plt.savefig(file_path, dpi=300, bbox_inches="tight")
             plt.close()
             generated_files['heatmap_granularity_tasktype'] = file_path
-            logger.info(f'✓ Generated: {file_path}')
 
         # 6. Summary Statistics Table
         # Use numeric percent difference for aggregates if available
@@ -1764,21 +1759,18 @@ Provide a concise analysis (3-4 paragraphs)."""
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
         generated_files['summary_statistics'] = file_path
-        logger.info(f'✓ Generated: {file_path}')
 
         # 7. Export detailed CSV
         # Export matched-only and unmatched CSVs
         csv_matched = output_dir / 'detailed_comparison.csv'
         df_matched.to_csv(csv_matched, index=False)
         generated_files['detailed_csv'] = csv_matched
-        logger.info(f"✓ Exported matched-only CSV: {csv_matched}")
 
         df_unmatched = df[df['baseline_value'] == 'N/A']
         if not df_unmatched.empty:
             csv_unmatched = output_dir / 'detailed_unmatched.csv'
             df_unmatched.to_csv(csv_unmatched, index=False)
             generated_files['unmatched_csv'] = csv_unmatched
-            logger.info(f"✓ Exported unmatched CSV: {csv_unmatched}")
 
         # Add per_example_diffs.html if it exists
         per_example_diffs_path = output_dir / 'per_example_diffs.html'

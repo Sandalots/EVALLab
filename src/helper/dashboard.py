@@ -13,27 +13,27 @@ def _build_metrics_table_rows(df):
         HTML string with <tr> rows
     """
     rows = []
-    for _, row in df.iterrows():
+    for row in df.itertuples(index=False):
         # Safely coerce values to numeric for display
-        pd_val = pd.to_numeric(row.get('percent_difference'), errors='coerce')
+        pd_val = pd.to_numeric(row.percent_difference, errors='coerce')
         diff_class = 'diff-pos' if (pd_val >= 0 if not pd.isna(pd_val) else False) else 'diff-neg'
         
-        base_val = pd.to_numeric(row.get('baseline_value'), errors='coerce')
-        repr_val = pd.to_numeric(row.get('reproduced_value'), errors='coerce')
+        base_val = pd.to_numeric(row.baseline_value, errors='coerce')
+        repr_val = pd.to_numeric(row.reproduced_value, errors='coerce')
         
-        base_str = f"{base_val:.4f}" if not pd.isna(base_val) else str(row.get('baseline_value', 'N/A'))
-        repr_str = f"{repr_val:.4f}" if not pd.isna(repr_val) else str(row.get('reproduced_value', 'N/A'))
-        pd_str = f"{pd_val:+.2f}%" if not pd.isna(pd_val) else str(row.get('percent_difference', 'N/A'))
+        base_str = f"{base_val:.4f}" if not pd.isna(base_val) else str(row.baseline_value)
+        repr_str = f"{repr_val:.4f}" if not pd.isna(repr_val) else str(row.reproduced_value)
+        pd_str = f"{pd_val:+.2f}%" if not pd.isna(pd_val) else str(row.percent_difference)
         
-        status_class = 'status-pass' if row.get('within_threshold') else 'status-fail'
+        status_class = 'status-pass' if row.within_threshold else 'status-fail'
         rows.append(
             f"<tr>"
-            f"<td>{row.get('configuration', 'N/A')}</td>"
-            f"<td>{row.get('metric_name', 'N/A')}</td>"
+            f"<td>{row.configuration}</td>"
+            f"<td>{row.metric_name}</td>"
             f"<td>{base_str}</td>"
             f"<td>{repr_str}</td>"
             f"<td class='{diff_class}'>{pd_str}</td>"
-            f"<td class='{status_class}'>{'PASS' if row.get('within_threshold') else 'FAIL'}</td>"
+            f"<td class='{status_class}'>{'PASS' if row.within_threshold else 'FAIL'}</td>"
             f"</tr>"
         )
     return '\n'.join(rows)
