@@ -470,6 +470,22 @@ class ResultEvaluator:
                     source="Parsed from outputs_all_methods/report.md"
                 )
 
+        # PRIORITY 2: Check for baseline_metrics.json (manually created baseline)
+        if codebase_path:
+            baseline_path = codebase_path / "baseline_metrics.json"
+            if baseline_path.exists():
+                try:
+                    with open(baseline_path, 'r') as f:
+                        baseline_metrics = json.load(f)
+                    logger.info(
+                        f"✓ Using baseline_metrics.json as baseline (manually specified)")
+                    return BaselineMetrics(
+                        metrics=baseline_metrics,
+                        source="Loaded from baseline_metrics.json"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to load baseline_metrics.json: {e}")
+
         # FALLBACK: Use complete_results.json only if report.md not available
         # Note: This may give 100% match if comparing file against itself
         if codebase_path:

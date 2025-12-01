@@ -155,6 +155,9 @@ class ExperimentExecutor:
         output_patterns = ['output*.json', 'results*.json', '*.json']
         for pattern in output_patterns:
             for output_file in working_dir.glob(pattern):
+                # Skip baseline_metrics.json - it's for comparison, not experiment output
+                if output_file.name == 'baseline_metrics.json':
+                    continue
                 try:
                     with open(output_file, 'r') as f:
                         outputs[output_file.name] = json.load(f)
