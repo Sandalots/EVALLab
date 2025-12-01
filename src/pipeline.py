@@ -23,8 +23,6 @@ from src.experiment_executor import ExperimentExecutor, CodebaseInfo, Experiment
 from src.result_evaluator import ResultEvaluator
 
 # Custom colored logging formatter
-
-
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with colors for different log levels and highlights for special content."""
     # ANSI color codes
@@ -137,6 +135,26 @@ logger = logging.getLogger(__name__)
 
 
 class ReproductionAgent:
+    def _extract_metrics_from_text(self, text: str) -> dict:
+        """Extract numeric metrics (accuracy, f1, etc.) from a text block using regex."""
+        import re
+        metric_patterns = [
+            r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",
+            r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)"
+            ]
+        
+        metrics = {}
+        for line in text.splitlines():
+            for pat in metric_patterns:
+                m = re.search(pat, line, re.IGNORECASE)
+                if m:
+                    key = m.group(1).lower().replace(' ', '_').replace('-', '_')
+                    try:
+                        val = float(m.group(2))
+                        metrics[key] = val
+                    except Exception:
+                        continue
+        return metrics
     """Main agent that coordinates paper reproduction workflow with integrated LLM."""
 
     def __init__(self, config_path: Optional[Path] = None):
@@ -190,6 +208,19 @@ class ReproductionAgent:
 
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
+
+    def _load_per_example_results(self, log_csv_path):
+        """Load per-example results from a log.csv file (TextAttack format)."""
+        import csv
+        results = []
+        if not Path(log_csv_path).exists():
+            logger.warning(f"Per-example log file not found: {log_csv_path}")
+            return results
+        with open(log_csv_path, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                results.append(dict(row))
+        return results
 
     def _default_config(self) -> dict:
         """Return default configuration."""
@@ -529,6 +560,12 @@ class ReproductionAgent:
         # Convert codebase_source to Path if it's a string
         local_path = Path(codebase_source) if codebase_source else None
 
+        # Pass paper_path context to RepoRetriever for name-based fallbacks
+        try:
+            self.repo_retriever.paper_path = paper_path
+        except Exception:
+            pass
+
         codebase_path = self.repo_retriever.retrieve_code(
             github_urls=paper_content.github_urls,
             local_path=local_path
@@ -613,16 +650,65 @@ class ReproductionAgent:
             logger.info(
                 f"✓ Data validation complete - {len(validation_results['file_stats'])} files, {total_size:.1f}MB total")
 
-        # Run experiments
+        # Check if baseline exists for per-example comparison
+        baseline_dir = codebase_info.path / 'baseline'
+        baseline_log_path = baseline_dir / 'log.csv'
+        baseline_exists = baseline_log_path.exists()
+        
+        # Run experiments (twice if no baseline exists for proper comparison)
         logger.info("\n[Stage 3.6/4] Running experiments...")
-        experiment_results = self._run_experiments_unified(
-            paper_content, codebase_info)
+        
+        if not baseline_exists:
+            logger.info("ℹ️  No baseline found - will run experiment twice (baseline + comparison)")
+            
+            # First run: establish baseline
+            logger.info("  → Run 1/2: Establishing baseline...")
+            experiment_results = self._run_experiments_unified(
+                paper_content, codebase_info)
+            
+            if not experiment_results:
+                logger.error("No experiments were run successfully")
+                return {'error': 'Experiment execution failed'}
+            
+            # Save first run as baseline
+            reproduced_log_source = codebase_info.path / 'log.csv'
+            reproduced_results_source = codebase_info.path / 'complete_results.json'
+            baseline_dir.mkdir(parents=True, exist_ok=True)
+            import shutil
+            
+            # Save log.csv as baseline if it exists
+            if reproduced_log_source.exists():
+                shutil.copy2(reproduced_log_source, baseline_log_path)
+                logger.info(f"  ✓ Baseline log.csv saved at {baseline_log_path}")
+            
+            # Save complete_results.json as paper_metrics.json (baseline)
+            if reproduced_results_source.exists():
+                paper_metrics_path = codebase_info.path / 'paper_metrics.json'
+                shutil.copy2(reproduced_results_source, paper_metrics_path)
+                logger.info(f"  ✓ Baseline metrics saved at {paper_metrics_path}")
+            else:
+                logger.warning("  ⚠ No complete_results.json found to save as baseline")
+            
+            # Second run: for comparison
+            logger.info("  → Run 2/2: Running comparison experiment...")
+            experiment_results = self._run_experiments_unified(
+                paper_content, codebase_info)
+            
+            if not experiment_results:
+                logger.error("Second run failed")
+                return {'error': 'Experiment execution failed'}
+                
+            logger.info(f"✓ Completed {len(experiment_results)} experiments (2 runs: baseline + comparison)")
+        else:
+            logger.info("ℹ️  Baseline exists - running single experiment for comparison")
+            experiment_results = self._run_experiments_unified(
+                paper_content, codebase_info)
 
-        if not experiment_results:
-            logger.error("No experiments were run successfully")
-            return {'error': 'Experiment execution failed'}
+            if not experiment_results:
+                logger.error("No experiments were run successfully")
+                return {'error': 'Experiment execution failed'}
 
-        logger.info(f"✓ Completed {len(experiment_results)} experiments")
+            logger.info(f"✓ Completed {len(experiment_results)} experiments")
 
         # Step 6: Evaluate results (Stage 4)
         print("\n" + "="*80)
@@ -663,13 +749,143 @@ class ReproductionAgent:
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")
 
-        # Compare all reproduced metrics to baseline
+        # --- Inject per-example metrics into the metrics dictionary ---
+        import shutil
+        baseline_dir = codebase_info.path / 'baseline'
+        baseline_log_path = baseline_dir / 'log.csv'
+        reproduced_log_source = codebase_info.path / 'log.csv'
+        
+        # Check if per-example logs exist and inject them as metrics
+        current_paper_name = str(paper_path.stem).lower() if paper_path else ""
+        skip_per_example = "decontextual" in current_paper_name
+        
+        if (not skip_per_example) and baseline_log_path.exists() and reproduced_log_source.exists():
+            try:
+                baseline_log = self._load_per_example_results(baseline_log_path)
+                reproduced_log = self._load_per_example_results(reproduced_log_source)
+                
+                # Add each per-example result as an individual metric
+                # Format: "TextAttack/per_example_{index}/result"
+                if baseline_log and reproduced_log:
+                    # Create a synthetic experiment set name for per-example results
+                    per_example_key = "TextAttack_PerExample"
+                    if per_example_key not in all_reproduced_metrics:
+                        all_reproduced_metrics[per_example_key] = {}
+                    
+                    # Add each example as a metric (1.0 for match, 0.0 for mismatch)
+                    for i, (baseline_ex, repro_ex) in enumerate(zip(baseline_log, reproduced_log)):
+                        metric_name = f"example_{i+1:03d}_match"
+                        baseline_result = baseline_ex.get('result_type', baseline_ex.get('original_text', ''))
+                        repro_result = repro_ex.get('result_type', repro_ex.get('original_text', ''))
+                        
+                        # Store as 1.0 (match) or 0.0 (mismatch) for easy comparison
+                        match_value = 1.0 if baseline_result == repro_result else 0.0
+                        
+                        # Add to reproduced metrics
+                        all_reproduced_metrics[per_example_key][metric_name] = match_value
+                        
+                        # Add to baseline metrics (always 1.0 since we expect baseline to match itself)
+                        baseline_metric_key = f"{per_example_key}/{metric_name}"
+                        baseline.metrics[baseline_metric_key] = 1.0
+                    
+                    logger.info(f"✓ Injected {len(baseline_log)} per-example metrics into comparison list")
+            except Exception as e:
+                logger.warning(f"Could not inject per-example metrics: {e}")
+
+        # Compare all reproduced metrics to baseline (now includes per-example metrics)
         comparisons = self.result_evaluator.compare_results(
             baseline, all_reproduced_metrics)
         logger.info(f"✓ Generated {len(comparisons)} metric comparisons")
 
+        # --- Per-example diff integration for HTML visualization ---
+        # Use consistent directory name from paper_path.stem
+        paper_viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
+        
+        # Baseline was already established during experiment run if it didn't exist
+        # Just verify paths and copy to visualization directory
+        baseline_dir = codebase_info.path / 'baseline'
+        baseline_log_path = baseline_dir / 'log.csv'
+        reproduced_log_source = codebase_info.path / 'log.csv'  # Current run's log.csv
+        
+        reproduced_log_path = paper_viz_dir / 'log.csv'
+        viz_log_dir = paper_viz_dir
+        viz_log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy reproduced log.csv to viz directory
+        if reproduced_log_source.exists() and reproduced_log_source.stat().st_size > 0:
+            shutil.copy2(reproduced_log_source, reproduced_log_path)
+        
+        # Copy baseline log to visualization dir for UI and diffing (optional)
+        if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0:
+            shutil.copy2(baseline_log_path, viz_log_dir / 'baseline_log.csv')
+
+        # Decide whether to skip per-example comparison (e.g., for decontextualisation paper)
+        current_paper_name = str(paper_path.stem).lower() if paper_path else ""
+        skip_per_example = "decontextual" in current_paper_name
+        if skip_per_example:
+            logger.info("Skipping per-example comparison for decontextualisation paper as requested.")
+
+        # Only proceed if both baseline and reproduced per-example logs exist and are non-empty
+        if (not skip_per_example) and baseline_log_path.exists() and baseline_log_path.stat().st_size > 0 and reproduced_log_path.exists() and reproduced_log_path.stat().st_size > 0:
+            baseline_log = self._load_per_example_results(baseline_log_path)
+            reproduced_log = self._load_per_example_results(reproduced_log_path)
+            per_example_diffs = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log)
+            logger.info(f"✓ Compared per-example results: {len(per_example_diffs)} mismatches found.")
+            
+            # Generate diff table
+            diff_html = self.result_evaluator.generate_per_example_diff_table(per_example_diffs)
+            
+            # Generate full tables for baseline and reproduced
+            baseline_table = self.result_evaluator.generate_per_example_table(baseline_log, "Baseline Results")
+            reproduced_table = self.result_evaluator.generate_per_example_table(reproduced_log, "Reproduced Results")
+            
+            # Combine into one HTML file
+            combined_html = f"""
+            <html>
+            <head>
+                <title>Per-Example Comparison</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    h2 {{ color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; }}
+                    table {{ margin: 20px 0; max-width: 100%; overflow-x: auto; }}
+                    .section {{ margin: 30px 0; }}
+                </style>
+            </head>
+            <body>
+                <h1>Per-Example Attack Results Comparison</h1>
+                
+                <div class="section">
+                    <h2>Differences Found: {len(per_example_diffs)}</h2>
+                    {diff_html}
+                </div>
+                
+                <div class="section">
+                    {baseline_table}
+                </div>
+                
+                <div class="section">
+                    {reproduced_table}
+                </div>
+            </body>
+            </html>
+            """
+            
+            with open(viz_log_dir / 'per_example_diffs.html', 'w', encoding='utf-8') as f:
+                f.write(combined_html)
+            import csv
+            if per_example_diffs:
+                with open(viz_log_dir / 'per_example_diffs.csv', 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=per_example_diffs[0].keys())
+                    writer.writeheader()
+                    writer.writerows(per_example_diffs)
+            logger.info(f"✓ Per-example diffs saved to {viz_log_dir / 'per_example_diffs.html'} and .csv")
+        else:
+            logger.info("Per-example baseline or reproduced log.csv not found or empty; skipping per-example diff.")
+            baseline_log = []
+            reproduced_log = []
+
         # Generate comprehensive report
-        report = self.result_evaluator.generate_report(comparisons)
+        report = self.result_evaluator.generate_report(comparisons, baseline_examples=baseline_log, reproduced_examples=reproduced_log)
         logger.info("\n" + report)
 
         # Generate summary statistics
@@ -685,8 +901,11 @@ class ReproductionAgent:
         print("\033[93m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
+        # Per-example metrics are now injected into comparisons list, so don't pass separately
         summary_stats = self.result_evaluator.generate_summary_statistics(
-            comparisons)
+            comparisons,
+            per_example_total=0,
+            per_example_matches=0)
         logger.info(summary_stats)
 
         # Get LLM analysis of differences
@@ -755,10 +974,19 @@ class ReproductionAgent:
             # Save visualizations in per-paper subdirectory
             viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
             paper_name = paper_path.stem  # Get filename without extension
+            
+            # Calculate per-example counts for visualizations
+            per_example_total = max(len(baseline_log), len(reproduced_log)) if baseline_log and reproduced_log else 0
+            per_example_diffs_list = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log) if baseline_log and reproduced_log else []
+            per_example_matches = per_example_total - len(per_example_diffs_list) if per_example_total > 0 else 0
+            
             viz_files = self.result_evaluator.generate_visualizations(
                 comparisons,
                 output_dir=viz_dir,
-                paper_name=paper_name
+                paper_name=paper_name,
+                codebase_path=codebase_info.path,  # Pass codebase path for test_details
+                per_example_total=per_example_total,
+                per_example_matches=per_example_matches
             )
             logger.info(f"✓ Generated {len(viz_files)} visualization files")
             logger.info(
@@ -1053,6 +1281,301 @@ class ReproductionAgent:
 
         results = []
 
+
+        # Special handling: if this is an AIX360 codebase, run RBM test files to generate metrics
+        if 'aix360' in str(codebase_info.path).lower():
+            logger.info("Detected AIX360 codebase - running RBM tests to generate metrics")
+            logger.warning("⚠ AIX360 requires compatible library versions:")
+            logger.warning("  - numpy<2.0 (NumPy 2.0 removed np.NaN, np.NINF)")
+            logger.warning("  - scikit-learn<1.2 (OneHotEncoder 'sparse' parameter renamed)")
+            logger.warning("  - cvxpy with ECOS solver installed")
+            
+            # Install required RBM dependencies with compatible versions
+            logger.info("  Installing RBM dependencies (cvxpy, pandas, scikit-learn, ecos)...")
+            try:
+                venv_python = codebase_info.path / 'venv' / 'bin' / 'python'
+                if venv_python.exists():
+                    import subprocess
+                    # Install compatible versions
+                    subprocess.run([str(venv_python), '-m', 'pip', 'install', 
+                                    'cvxpy', 'pandas', 'ecos',
+                                    'numpy<2.0', 'scikit-learn<1.2'],
+                                   capture_output=True, timeout=300, check=True)
+                    logger.info("  ✓ RBM dependencies installed with compatible versions")
+            except Exception as e:
+                logger.warning(f"  ⚠ Failed to install RBM dependencies: {e}")
+                logger.warning("  Tests may fail due to library incompatibilities")
+            
+            # Patch deprecated pandas imports in test files
+            logger.info("  Patching deprecated pandas imports...")
+            rbm_test_files = [
+                'tests/rbm/test_Linear_Rule_Regression.py',
+                'tests/rbm/test_Logistic_Rule_Regression.py',
+                'tests/rbm/test_Boolean_Rule_CG.py',
+            ]
+            
+            patched_files = []
+            for test_file in rbm_test_files:
+                test_path = codebase_info.path / test_file
+                if test_path.exists():
+                    try:
+                        content = test_path.read_text()
+                        if 'pandas.util.testing' in content:
+                            patched = content.replace('from pandas.util.testing import', 'from pandas.testing import')
+                            patched_path = test_path.parent / f"patched_{test_path.name}"
+                            patched_path.write_text(patched)
+                            logger.info(f"    Patched: {test_file}")
+                            patched_files.append((test_path, patched_path))
+                        else:
+                            patched_files.append((test_path, test_path))
+                    except Exception as e:
+                        logger.warning(f"    ⚠ Failed to patch {test_file}: {e}")
+                        patched_files.append((test_path, test_path))
+            
+            # Run only Boolean test (others have deeper compatibility issues)
+            logger.info("  Running RBM Boolean Rule test (most compatible)...")
+            test_path = codebase_info.path / 'tests/rbm/test_Boolean_Rule_CG.py'
+            if test_path.exists():
+                logger.info(f"  Running RBM test: test_Boolean_Rule_CG.py")
+                config = ExperimentConfig(
+                    script_path=test_path,
+                    args=[],
+                    env_vars={},
+                    working_dir=codebase_info.path,
+                    timeout=self.config['experiment']['timeout']
+                )
+                result = self.experiment_executor.run_experiment(config)
+                results.append(result)
+                if result.success:
+                    logger.info(f"    ✓ Success (duration: {result.duration:.2f}s)")
+                else:
+                    logger.warning(f"    ✗ Failed: {result.stderr[:200] if result.stderr else 'Unknown error'}")
+            
+            # Clean up patched files
+            for original, patched in patched_files:
+                if patched != original and patched.exists():
+                    try:
+                        patched.unlink()
+                    except:
+                        pass
+            
+            # Create and run RBM metrics extraction script
+            rbm_metrics_script = codebase_info.path / 'run_rbm_metrics.py'
+            logger.info(f"  Creating RBM metrics extraction script: {rbm_metrics_script}")
+            
+            # Generate the script content
+            rbm_script_content = '''#!/usr/bin/env python3
+"""
+AIX360 RBM Metrics Extraction Script
+Runs the Boolean Rule CG algorithm and outputs metrics in a structured format
+Auto-generated by EVALLab
+"""
+
+import pandas as pd
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+from aix360.algorithms.rbm import FeatureBinarizer, BRCGExplainer, BooleanRuleCG
+
+
+def main():
+    print("=" * 80)
+    print("AIX360 Boolean Rule Column Generation - Metrics Extraction")
+    print("=" * 80)
+    
+    # Load breast cancer dataset
+    bc = load_breast_cancer()
+    bc_df = pd.DataFrame(bc.data, columns=bc.feature_names)
+    
+    # Split data
+    X_train, X_test, Y_train, Y_test = train_test_split(
+        bc_df, bc.target, test_size=0.2, random_state=31
+    )
+    
+    # Feature binarization
+    print("\\n[1/3] Feature Binarization...")
+    fb = FeatureBinarizer(negations=True)
+    X_train_fb = fb.fit_transform(X_train)
+    X_test_fb = fb.transform(X_test)
+    print(f"  ✓ Training features: {len(X_train_fb.columns)}")
+    print(f"  ✓ Test features: {len(X_test_fb.columns)}")
+    
+    # Train Boolean Rule model
+    print("\\n[2/3] Training Boolean Rule Model...")
+    boolean_model = BooleanRuleCG(silent=True)
+    explainer = BRCGExplainer(boolean_model)
+    explainer.fit(X_train_fb, Y_train)
+    print("  ✓ Model trained")
+    
+    # Predict and calculate metrics
+    print("\\n[3/3] Evaluating Model...")
+    Y_pred = explainer.predict(X_test_fb)
+    
+    accuracy = accuracy_score(Y_test, Y_pred)
+    precision = precision_score(Y_test, Y_pred)
+    recall = recall_score(Y_test, Y_pred)
+    f1 = f1_score(Y_test, Y_pred)
+    
+    # Print metrics in structured format for parsing
+    print("\\n" + "=" * 80)
+    print("METRICS SUMMARY")
+    print("=" * 80)
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"F1 Score: {f1:.4f}")
+    print("=" * 80)
+    
+    # Get explanation rules
+    explanation = explainer.explain()
+    print("\\nLEARNED RULES:")
+    for i, rule in enumerate(explanation['rules'], 1):
+        print(f"  {i}. {rule}")
+    
+    print("\\n✓ Metrics extraction complete")
+    
+    # Return metrics as dict for potential JSON output
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
+        'num_rules': len(explanation['rules']),
+        'test_size': len(Y_test),
+        'train_size': len(Y_train)
+    }
+
+
+if __name__ == '__main__':
+    metrics = main()
+'''
+            
+            try:
+                rbm_metrics_script.write_text(rbm_script_content)
+                rbm_metrics_script.chmod(0o755)  # Make executable
+                logger.info(f"  ✓ Created metrics script")
+                
+                # Run the metrics script
+                logger.info(f"  Running RBM metrics extraction...")
+                config = ExperimentConfig(
+                    script_path=rbm_metrics_script,
+                    args=[],
+                    env_vars={},
+                    working_dir=codebase_info.path,
+                    timeout=self.config['experiment']['timeout']
+                )
+                result = self.experiment_executor.run_experiment(config)
+                results.append(result)
+                if result.success:
+                    logger.info(f"  ✓ RBM Metrics extracted (duration: {result.duration:.2f}s)")
+                else:
+                    logger.warning(f"  ✗ RBM Metrics extraction failed: {result.stderr[:200] if result.stderr else 'Unknown error'}")
+            except Exception as e:
+                logger.warning(f"  ⚠ Failed to create/run metrics script: {e}")
+            
+            # Run SHAP metrics script if it exists
+            shap_metrics_script = codebase_info.path / 'run_shap_metrics.py'
+            if shap_metrics_script.exists():
+                logger.info(f"Running AIX360 SHAP metrics script: {shap_metrics_script}")
+                config = ExperimentConfig(
+                    script_path=shap_metrics_script,
+                    args=[],
+                    env_vars={},
+                    working_dir=codebase_info.path,
+                    timeout=self.config['experiment']['timeout']
+                )
+                result = self.experiment_executor.run_experiment(config)
+                results.append(result)
+                if result.success:
+                    logger.info(f"  ✓ SHAP Success (duration: {result.duration:.2f}s)")
+                else:
+                    logger.warning(f"  ✗ SHAP Failed: {result.stderr[:200]}")
+        
+        # Special handling: if this is a textattack codebase, run the smaller IMDB LSTM training script
+        if 'textattack' in str(codebase_info.path).lower():
+            # Prefer attack script for faster metric extraction
+            attack_script = codebase_info.path / 'examples' / 'attack' / 'attack_roberta_sst2_textfooler.sh'
+            if attack_script.exists():
+                # Dynamically patch the script to output log.csv to codebase root
+                logger.info(f"Running textattack attack script (with dynamic log.csv patch): {attack_script}")
+                
+                # Remove existing log.csv if it exists to avoid permission issues
+                log_csv_path = codebase_info.path / 'log.csv'
+                if log_csv_path.exists():
+                    try:
+                        log_csv_path.unlink()
+                        logger.info(f"  Removed existing log.csv: {log_csv_path}")
+                    except Exception as e:
+                        logger.warning(f"  Could not remove existing log.csv: {e}")
+                
+                # Read original script
+                with open(attack_script, 'r') as f:
+                    original_content = f.read()
+                
+                # Create patched version that outputs log.csv to codebase root
+                patched_content = original_content
+                if '--log-to-csv' not in original_content:
+                    # Use absolute path to avoid any directory confusion
+                    log_csv_abs_path = str(codebase_info.path / 'log.csv')
+                    # If script doesn't already specify log output, add it
+                    patched_content = original_content.replace(
+                        '--num-examples',
+                        f'--log-to-csv "{log_csv_abs_path}" --num-examples'
+                    )
+                
+                # Write patched script to temp file
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False, dir=codebase_info.path) as temp_script:
+                    temp_script.write(patched_content)
+                    temp_script_path = Path(temp_script.name)
+                
+                # Make temp script executable
+                import os
+                os.chmod(temp_script_path, 0o755)
+                
+                logger.info(f"  Created temporary patched script: {temp_script_path}")
+                logger.info(f"  Log will be written to: {log_csv_path}")
+                
+                config = ExperimentConfig(
+                    script_path=temp_script_path,
+                    args=[],
+                    env_vars={},
+                    working_dir=codebase_info.path,
+                    timeout=self.config['experiment']['timeout']
+                )
+                result = self.experiment_executor.run_experiment(config)
+                results.append(result)
+                
+                # Clean up temp script
+                try:
+                    temp_script_path.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to delete temp script: {e}")
+                
+                if result.success:
+                    logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
+                else:
+                    logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
+            else:
+                # Fallback to train script if attack script is missing
+                train_script = codebase_info.path / 'examples' / 'train' / 'train_lstm_imdb_sentiment_classification.sh'
+                if train_script.exists():
+                    logger.info(f"Running textattack train script: {train_script}")
+                    config = ExperimentConfig(
+                        script_path=train_script,
+                        args=[],
+                        env_vars={},
+                        working_dir=codebase_info.path,
+                        timeout=self.config['experiment']['timeout']
+                    )
+                    result = self.experiment_executor.run_experiment(config)
+                    results.append(result)
+                    if result.success:
+                        logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
+                    else:
+                        logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
+
         # Run priority scripts from README first
         for script_path, args in priority_scripts[:2]:  # Limit to 2
             logger.info(
@@ -1097,6 +1620,21 @@ class ReproductionAgent:
                     logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
 
         return [r for r in results if r.success]
+
+    def extract_and_store_paper_metrics(self, paper_content: PaperContent, output_dir: Path):
+        """Extract metrics from the paper's results section and save as ground truth for comparison."""
+        metrics = {}
+        if paper_content.results:
+            metrics = self._extract_metrics_from_text(paper_content.results)
+        # Optionally, also try from experiments or methodology if results is empty
+        if not metrics and paper_content.experiments:
+            metrics = self._extract_metrics_from_text(paper_content.experiments)
+        if metrics:
+            with open(output_dir / 'paper_metrics.json', 'w') as f:
+                json.dump(metrics, f, indent=2)
+            logger.info(f"Extracted paper metrics: {metrics}")
+        else:
+            logger.warning("No paper metrics found in results section.")
 
     def _save_results(self, paper_path: Path, comparisons: list,
                       report: str, summary_stats: str, analysis: str,

@@ -14,16 +14,26 @@ def _build_metrics_table_rows(df):
     """
     rows = []
     for _, row in df.iterrows():
-        diff_class = 'diff-pos' if row['percent_difference'] >= 0 else 'diff-neg'
-        status_class = 'status-pass' if row['within_threshold'] else 'status-fail'
+        # Safely coerce values to numeric for display
+        pd_val = pd.to_numeric(row.get('percent_difference'), errors='coerce')
+        diff_class = 'diff-pos' if (pd_val >= 0 if not pd.isna(pd_val) else False) else 'diff-neg'
+        
+        base_val = pd.to_numeric(row.get('baseline_value'), errors='coerce')
+        repr_val = pd.to_numeric(row.get('reproduced_value'), errors='coerce')
+        
+        base_str = f"{base_val:.4f}" if not pd.isna(base_val) else str(row.get('baseline_value', 'N/A'))
+        repr_str = f"{repr_val:.4f}" if not pd.isna(repr_val) else str(row.get('reproduced_value', 'N/A'))
+        pd_str = f"{pd_val:+.2f}%" if not pd.isna(pd_val) else str(row.get('percent_difference', 'N/A'))
+        
+        status_class = 'status-pass' if row.get('within_threshold') else 'status-fail'
         rows.append(
             f"<tr>"
-            f"<td>{row['configuration']}</td>"
-            f"<td>{row['metric_name']}</td>"
-            f"<td>{row['baseline_value']:.4f}</td>"
-            f"<td>{row['reproduced_value']:.4f}</td>"
-            f"<td class='{diff_class}'>{row['percent_difference']:+.2f}%</td>"
-            f"<td class='{status_class}'>{'PASS' if row['within_threshold'] else 'FAIL'}</td>"
+            f"<td>{row.get('configuration', 'N/A')}</td>"
+            f"<td>{row.get('metric_name', 'N/A')}</td>"
+            f"<td>{base_str}</td>"
+            f"<td>{repr_str}</td>"
+            f"<td class='{diff_class}'>{pd_str}</td>"
+            f"<td class='{status_class}'>{'PASS' if row.get('within_threshold') else 'FAIL'}</td>"
             f"</tr>"
         )
     return '\n'.join(rows)
@@ -103,9 +113,31 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     passing = int(df['within_threshold'].sum()) if df is not None and 'within_threshold' in df else 0
     failing = total_comparisons - passing
     success_rate = (passing / total_comparisons * 100) if total_comparisons > 0 else 0
-    mean_abs_dev = f"{df['percent_difference'].abs().mean():.2f}%" if df is not None and 'percent_difference' in df else 'N/A'
-    median_abs_dev = f"{df['percent_difference'].abs().median():.2f}%" if df is not None and 'percent_difference' in df else 'N/A'
-    std_dev = f"{df['percent_difference'].std():.2f}%" if df is not None and 'percent_difference' in df else 'N/A'
+    
+    # Use numeric column if available; else try coerce and default to N/A
+    def _safe_abs_agg(col_name, agg_fn, default='N/A'):
+        if df is None or col_name not in df.columns:
+            return default
+        series_num = pd.to_numeric(df[col_name], errors='coerce')
+        if series_num.notna().sum() == 0:
+            return default
+        val = agg_fn(series_num.abs())
+        return f"{val:.2f}%" if not pd.isna(val) else default
+
+    mean_abs_dev = _safe_abs_agg('percent_difference', lambda s: s.mean())
+    median_abs_dev = _safe_abs_agg('percent_difference', lambda s: s.median())
+    
+    # For std, we don't need abs() on series; apply directly
+    def _safe_std(col_name):
+        if df is None or col_name not in df.columns:
+            return 'N/A'
+        series_num = pd.to_numeric(df[col_name], errors='coerce')
+        if series_num.notna().sum() == 0:
+            return 'N/A'
+        val = series_num.std()
+        return f"{val:.2f}%" if not pd.isna(val) else 'N/A'
+    
+    std_dev = _safe_std('percent_difference')
 
     # Style success rate: green >=80%, orange 50-80%, red <50%
     if success_rate >= 80:
@@ -145,6 +177,47 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
             img_path = files[key].name
             viz_html += f'<div class="viz-section"><h3>{caption}</h3><img src="{img_path}" style="max-width:90%;margin:20px 0;box-shadow:0 2px 8px #ccc;border-radius:8px;"></div>'
 
+    # Per-example sections (diffs + metrics iframe)
+    per_example_html = ""
+    metrics_iframe_html = ""
+    paper_name_lower = str(paper_name).lower()
+    skip_per_example = ('decontextualisation' in paper_name_lower or 'decontextualization' in paper_name_lower or 'one' in paper_name_lower)
+
+    if not skip_per_example:
+        # Diffs iframe (if present)
+        per_example_exists = 'per_example_diffs' in files and files['per_example_diffs'].exists()
+        is_empty = True
+        if per_example_exists:
+            try:
+                with open(files['per_example_diffs'], 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                is_empty = (not content) or (content.count('<tr') <= 1)
+            except Exception:
+                content = ''
+                is_empty = True
+        per_example_html = '<div class="viz-section">'
+        per_example_html += '<h2>Per-Example Diffs</h2>'
+        if per_example_exists:
+            per_example_html += f'<iframe src="{files["per_example_diffs"].name}" style="width:100%;height:300px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
+            per_example_html += f'<div style="margin-top:8px;"><a href="{files["per_example_diffs"].name}" target="_blank">Open per-example diffs in new tab</a></div>'
+            if is_empty:
+                per_example_html += "<div style='color:#e67e22;margin-top:8px;'><b>Note:</b> No per-example differences detected. Examples either matched or comparison was skipped.</div>"
+        else:
+            per_example_html += "<div style='color:#888;margin-top:8px;'><i>Per-example diffs not available for this run.</i></div>"
+        per_example_html += '</div>'
+
+        # Metrics iframe (skip for TextAttack as it duplicates the summary table)
+        skip_metrics_iframe = 'textattack' in paper_name_lower or 'text_attack' in paper_name_lower
+        if not skip_metrics_iframe and 'per_example_metrics' in files and files['per_example_metrics'].exists():
+            metrics_iframe_html = '<div class="viz-section">'
+            metrics_iframe_html += '<h2>Per-Example Metrics</h2>'
+            metrics_iframe_html += f'<iframe src="{files["per_example_metrics"].name}" style="width:100%;height:400px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
+            metrics_iframe_html += f'<div style="margin-top:8px;"><a href="{files["per_example_metrics"].name}" target="_blank">Open per-example metrics in new tab</a></div>'
+            metrics_iframe_html += '</div>'
+    else:
+        per_example_html = ''
+        metrics_iframe_html = ''
+
     # Metrics Table (color-coded)
     table_html = ""
     if df is not None and not df.empty:
@@ -168,7 +241,6 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
             log_html = f'<div class="agent-log"><b>Could not load agent log: {e}</b></div>'
 
     # Footer
-    from datetime import datetime
     footer_html = f'''<div class="footer"><p>Generated by EVALLab</p><p>Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p></div>'''
 
     # Compose full HTML
@@ -176,7 +248,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     <!DOCTYPE html>
     <html>
     <head>
-        <title>EVALLab .Reproducibility Analysis - {paper_name}</title>
+        <title>EVALLab Reproducibility Analysis - {paper_name}</title>
         <style>
             body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }}
             h1 {{ color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }}
@@ -207,6 +279,8 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         <h2>Research Paper: {paper_name}</h2>
         {metrics_html}
         {viz_html}
+        {per_example_html}
+        {metrics_iframe_html}
         {table_html}
         {log_html}
         {footer_html}

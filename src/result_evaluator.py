@@ -44,6 +44,219 @@ class ExperimentSet:
 
 
 class ResultEvaluator:
+    def compare_per_example_results(self, baseline_examples, reproduced_examples):
+        """
+        Compare per-example attack results between baseline and reproduced runs.
+        Returns a list of diffs (dicts) for mismatched predictions or outputs.
+        """
+        diffs = []
+        # Use original_text as the key for matching
+        baseline_map = {ex.get('original_text'): ex for ex in baseline_examples}
+        reproduced_map = {ex.get('original_text'): ex for ex in reproduced_examples}
+        for key in baseline_map:
+            base = baseline_map[key]
+            repro = reproduced_map.get(key)
+            if not repro:
+                diffs.append({'original_text': key, 'error': 'Missing in reproduced'})
+                continue
+            # Compare outputs and result_type
+            mismatch = False
+            diff_entry = {'original_text': key}
+            for field in ['perturbed_text', 'original_output', 'perturbed_output', 'ground_truth_output', 'result_type']:
+                base_val = base.get(field)
+                repro_val = repro.get(field)
+                if base_val != repro_val:
+                    mismatch = True
+                    diff_entry[field] = {'baseline': base_val, 'reproduced': repro_val}
+            if mismatch:
+                diffs.append(diff_entry)
+        return diffs
+
+    def generate_attack_summary_table(self, metrics_dict):
+        """
+        Generate a TextAttack-style summary table as HTML from attack metrics.
+        """
+        keys = [
+            ('attack_success_rate', 'Attack Success Rate'),
+            ('avg_num_queries', 'Avg Num Queries'),
+            ('num_attacks', 'Num Attacks'),
+            ('num_successful_attacks', 'Num Successful Attacks')
+        ]
+        rows = []
+        for k, label in keys:
+            val = metrics_dict.get(k, '-')
+            if isinstance(val, float):
+                val = f"{val:.4f}" if 'rate' in k else f"{val:.2f}" if 'avg' in k else f"{val}"
+            rows.append(f"<tr><td>{label}</td><td>{val}</td></tr>")
+        return """
+        <table border="1" style="border-collapse:collapse;">
+            <tr><th>Metric</th><th>Value</th></tr>
+            {rows}
+        </table>
+        """.format(rows='\n'.join(rows))
+
+    def generate_per_example_table(self, examples, title="Per-Example Results"):
+        """
+        Generate an HTML table showing all per-example results.
+        Args:
+            examples: List of example dicts from log.csv
+            title: Title for the table
+        """
+        if not examples:
+            return "<p>No per-example data available.</p>"
+        
+        # Key fields to display
+        display_fields = ['original_text', 'perturbed_text', 'original_output', 'perturbed_output', 
+                         'ground_truth_output', 'result_type', 'num_queries']
+        
+        html = [f"<h3>{title}</h3>"]
+        html.append("<table border='1' style='border-collapse:collapse; font-size:12px;'>")
+        html.append("<tr>" + ''.join(f"<th style='padding:8px;background:#f0f0f0;'>{h.replace('_', ' ').title()}</th>" 
+                                     for h in display_fields) + "</tr>")
+        
+        for ex in examples:
+            html.append("<tr>")
+            for field in display_fields:
+                val = ex.get(field, '')
+                # Truncate long text
+                if isinstance(val, str) and len(val) > 100:
+                    val = val[:97] + '...'
+                # Color code result_type
+                if field == 'result_type':
+                    color = '#d4edda' if val == 'Successful' else '#f8d7da'
+                    html.append(f"<td style='padding:8px;background:{color};'>{val}</td>")
+                else:
+                    html.append(f"<td style='padding:8px;'>{val}</td>")
+            html.append("</tr>")
+        
+        html.append("</table>")
+        html.append(f"<p style='margin-top:8px;color:#666;'>Total examples: {len(examples)}</p>")
+        return '\n'.join(html)
+    
+    def generate_per_example_diff_table(self, diffs):
+        """
+        Generate an HTML table for per-example prediction diffs.
+        """
+        if not diffs:
+            return "<p>No per-example mismatches found.</p>"
+        headers = set()
+        for d in diffs:
+            headers.update(d.keys())
+        headers = list(headers)
+        html = ["<table border='1' style='border-collapse:collapse;'>"]
+        html.append("<tr>" + ''.join(f"<th>{h}</th>" for h in headers) + "</tr>")
+        for d in diffs:
+            html.append("<tr>" + ''.join(f"<td>{d.get(h, '')}</td>" for h in headers) + "</tr>")
+        html.append("</table>")
+        return '\n'.join(html)
+
+    def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
+        """Recursively extract numeric metrics from nested dictionaries, and also include all top-level numeric keys (for flat summary metrics)."""
+        metrics = {}
+        for key, value in data.items():
+            current_key = f"{prefix}/{key}" if prefix else key
+            if isinstance(value, dict):
+                if 'metrics' in value:
+                    metric_dict = value['metrics']
+                    for metric_name, metric_value in metric_dict.items():
+                        if isinstance(metric_value, dict):
+                            for threshold, val in metric_value.items():
+                                if isinstance(val, (int, float)):
+                                    full_key = f"{current_key}/{metric_name}@{threshold}"
+                                    metrics[full_key] = float(val)
+                        elif isinstance(metric_value, (int, float)):
+                            full_key = f"{current_key}/{metric_name}"
+                            metrics[full_key] = float(metric_value)
+                else:
+                    nested = self._extract_metrics_from_nested_dict(value, current_key)
+                    metrics.update(nested)
+            elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                metrics[current_key] = float(value)
+        # Also add all top-level numeric keys (for flat summary metrics, e.g., from TextAttack)
+        if prefix == "" and isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    metrics[key] = float(value)
+        return metrics
+
+    def load_paper_metrics(self, codebase_path: Path) -> dict:
+        """Load ground truth metrics extracted from the paper (paper_metrics.json), searching both experiment and codebase directories. Fallback to complete_results.json if not found.
+
+        Preference order:
+          1. papers/codebases/<Repo>/paper_metrics.json (explicit TextAttack path check)
+          2. codebase_path/paper_metrics.json
+          3. Recursive search under nearest 'papers' or 'codebases' dirs
+          4. codebase_path/complete_results.json (fallback)
+        """
+        import os
+        # 0. Explicit TextAttack repo path preference
+        explicit_textattack = Path('papers/codebases/TextAttack/paper_metrics.json')
+        logger.debug(f"[DEBUG] Checking explicit TextAttack baseline at: {explicit_textattack}")
+        if explicit_textattack.exists():
+            try:
+                with open(explicit_textattack, 'r') as f:
+                    logger.info(f"✓ Using paper_metrics.json as baseline (explicit path): {explicit_textattack}")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load paper_metrics.json from explicit TextAttack path: {e}")
+        # 1. Check for paper_metrics.json in experiment directory
+        paper_metrics_path = codebase_path / 'paper_metrics.json'
+        logger.debug(f"[DEBUG] Checking for paper_metrics.json in experiment directory: {paper_metrics_path}")
+        if paper_metrics_path.exists():
+            try:
+                with open(paper_metrics_path, 'r') as f:
+                    logger.info("✓ Using paper_metrics.json as baseline for metric comparison (experiment directory).")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load paper_metrics.json from experiment directory: {e}")
+
+        # 2. Check for paper_metrics.json in codebase directory (e.g., papers/codebases/TextAttack/paper_metrics.json)
+        # Look for a 'codebases' or 'papers' directory in the parent tree
+        current = codebase_path
+        found = False
+        for level in range(5):  # Search up to 5 levels up
+            codebases_dir = current / 'codebases'
+            papers_dir = current / 'papers'
+            logger.debug(f"[DEBUG] Searching for paper_metrics.json in: {codebases_dir} and {papers_dir} (level {level})")
+            for d in [codebases_dir, papers_dir]:
+                if d.exists() and d.is_dir():
+                    logger.debug(f"[DEBUG] Directory exists: {d}, searching recursively for paper_metrics.json")
+                    for root, dirs, files in os.walk(d):
+                        logger.debug(f"[DEBUG] Checking directory: {root}")
+                        if 'paper_metrics.json' in files:
+                            file_path = os.path.join(root, 'paper_metrics.json')
+                            logger.debug(f"[DEBUG] Found paper_metrics.json at: {file_path}")
+                            try:
+                                with open(file_path, 'r') as f:
+                                    logger.info(f"✓ Using paper_metrics.json as baseline for metric comparison (found in {file_path}).")
+                                    return json.load(f)
+                            except Exception as e:
+                                logger.error(f"Failed to load paper_metrics.json from {file_path}: {e}")
+                            found = True
+                            break
+                else:
+                    logger.debug(f"[DEBUG] Directory does not exist: {d}")
+                if found:
+                    break
+            if found:
+                break
+            if current.parent == current:
+                logger.debug(f"[DEBUG] Reached filesystem root at {current}, stopping search.")
+                break
+            current = current.parent
+
+        # 3. Fallback: use complete_results.json as baseline
+        complete_results_path = codebase_path / 'complete_results.json'
+        logger.debug(f"[DEBUG] Checking for complete_results.json in: {complete_results_path}")
+        if complete_results_path.exists():
+            try:
+                with open(complete_results_path, 'r') as f:
+                    logger.warning("⚠ Using complete_results.json as baseline (may give 100% match)")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load complete_results.json: {e}")
+        logger.error("No baseline metrics found (paper_metrics.json in experiment/codebase or complete_results.json)")
+        return {}
     def _build_metrics_table_rows(self, df):
         """
         Build HTML table rows for the metrics comparison table.
@@ -212,62 +425,44 @@ class ResultEvaluator:
     def extract_all_metrics_from_experiments(self, experiment_sets: List[ExperimentSet]) -> Dict[str, Dict[str, float]]:
         """
         Extract all metrics from all experiment sets, organized by configuration.
-
         Args:
             experiment_sets: List of experiment results
-
         Returns:
             Dict mapping "experiment_set/config/model/metric" to value
         """
         all_metrics = {}
-
         for exp_set in experiment_sets:
             metrics = self._extract_metrics_from_nested_dict(
                 exp_set.results,
                 prefix=exp_set.name
             )
-            all_metrics.update(metrics)
-
+            all_metrics[exp_set.name] = metrics
         return all_metrics
 
-    def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
-        """
-        Recursively extract numeric metrics from nested dictionaries.
+    def compare_to_paper_metrics(self, codebase_path: Path, experiment_sets: List[ExperimentSet]) -> list:
+        """Compare all reproduced metrics to paper metrics and return a list of diffs."""
+        paper_metrics = self.load_paper_metrics(codebase_path)
+        all_metrics = self.extract_all_metrics_from_experiments(experiment_sets)
+        comparisons = []
+        for config, metrics in all_metrics.items():
+            for metric_name, reproduced_value in metrics.items():
+                if metric_name in paper_metrics:
+                    baseline_value = paper_metrics[metric_name]
+                    diff = reproduced_value - baseline_value
+                    percent_diff = 100 * diff / baseline_value if baseline_value else 0.0
+                    within = abs(percent_diff) <= self.threshold * 100
+                    comparisons.append({
+                        'configuration': config,
+                        'metric_name': metric_name,
+                        'baseline_value': baseline_value,
+                        'reproduced_value': reproduced_value,
+                        'difference': diff,
+                        'percent_difference': percent_diff,
+                        'within_threshold': within
+                    })
+        return comparisons
 
-        Args:
-            data: Nested dictionary (e.g., from complete_results.json)
-            prefix: Prefix for metric names
-
-        Returns:
-            Flat dictionary of metric_name: value
-        """
-        metrics = {}
-
-        for key, value in data.items():
-            current_key = f"{prefix}/{key}" if prefix else key
-
-            if isinstance(value, dict):
-                if 'metrics' in value:
-                    metric_dict = value['metrics']
-                    for metric_name, metric_value in metric_dict.items():
-                        if isinstance(metric_value, dict):
-                            for threshold, val in metric_value.items():
-                                if isinstance(val, (int, float)):
-                                    full_key = f"{current_key}/{metric_name}@{threshold}"
-                                    metrics[full_key] = float(val)
-                        elif isinstance(metric_value, (int, float)):
-                            full_key = f"{current_key}/{metric_name}"
-                            metrics[full_key] = float(metric_value)
-                else:
-                    # Recurse into nested dicts
-                    nested = self._extract_metrics_from_nested_dict(
-                        value, current_key)
-                    metrics.update(nested)
-            elif isinstance(value, (int, float)) and not isinstance(value, bool):
-                # Direct numeric value
-                metrics[current_key] = float(value)
-
-        return metrics
+    # ...existing code...
 
     def extract_baseline_from_paper(self, paper_content: str, codebase_path: Path = None) -> BaselineMetrics:
         """
@@ -291,6 +486,22 @@ class ResultEvaluator:
                     metrics=metrics,
                     source="Parsed from outputs_all_methods/report.md"
                 )
+
+        # PRIORITY 2: Check for baseline_metrics.json (manually created baseline)
+        if codebase_path:
+            baseline_path = codebase_path / "baseline_metrics.json"
+            if baseline_path.exists():
+                try:
+                    with open(baseline_path, 'r') as f:
+                        baseline_metrics = json.load(f)
+                    logger.info(
+                        f"✓ Using baseline_metrics.json as baseline (manually specified)")
+                    return BaselineMetrics(
+                        metrics=baseline_metrics,
+                        source="Loaded from baseline_metrics.json"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to load baseline_metrics.json: {e}")
 
         # FALLBACK: Use complete_results.json only if report.md not available
         # Note: This may give 100% match if comparing file against itself
@@ -339,7 +550,6 @@ JSON:"""
 
             if not cleaned_metrics:
                 logger.warning("No metrics extracted from paper")
-
             return BaselineMetrics(
                 metrics=cleaned_metrics,
                 source="Extracted from paper using EVALLab"
@@ -385,13 +595,9 @@ JSON:"""
                 try:
                     with open(results_path, 'r') as f:
                         results = json.load(f)
-
-                    extracted = self._extract_metrics_from_nested_dict(
-                        results, prefix=dir_name)
+                    extracted = self._extract_metrics_from_nested_dict(results, prefix=dir_name)
                     metrics.update(extracted)
-
-                    logger.info(
-                        f"✓ Extracted {len(extracted)} baseline metrics from {dir_name}/complete_results.json")
+                    logger.info(f"✓ Extracted {len(extracted)} baseline metrics from {dir_name}/complete_results.json")
                 except Exception as e:
                     logger.error(f"Failed to extract from {results_path}: {e}")
 
@@ -504,38 +710,99 @@ JSON:"""
 
         return metrics_by_config
 
+    def _normalize_metric_key(self, key: str) -> str:
+        """
+        Normalize metric key for robust comparison.
+        - Lowercase
+        - Replace dashes with underscores
+        - Remove redundant slashes
+        - Replace @ with _at_
+        - Remove spaces
+        - Remove trailing/leading slashes
+        - Collapse multiple underscores
+        - Collapse repeated 'root/' prefixes to a single 'root/'
+        - Strip stray ANSI color artifacts (e.g., '92m')
+        - Collapse consecutive duplicate path segments (e.g., 'a/a/x' -> 'a/x')
+        """
+        import re
+        # Lowercase and basic normalization
+        key = key.lower().replace('-', '_').replace(' ', '').replace('@', '_at_')
+
+        # Remove ANSI escape sequences if present
+        key = re.sub(r"\x1b\[[0-9;]*m", "", key)
+        # Remove orphaned color suffix fragments like '92m', '39m', etc.
+        key = re.sub(r"\d{1,3}m", "", key)
+
+        # Normalize slashes and underscores
+        key = re.sub(r'/+', '/', key)
+        key = re.sub(r'_+', '_', key)
+        # Collapse any sequence of two or more 'root/' at the start to a single 'root/'
+        key = re.sub(r'^(root/)+', 'root/', key)
+        key = key.strip('/')
+
+        # Collapse consecutive duplicate path segments (handles cases like 'outputs_all_methods/outputs_all_methods/...')
+        parts = [p for p in key.split('/') if p]
+        dedup_parts = []
+        for p in parts:
+            if not dedup_parts or dedup_parts[-1] != p:
+                dedup_parts.append(p)
+        key = '/'.join(dedup_parts)
+        return key
+
+    def _flatten_dict(self, d, parent_key="", sep="/"):
+        """Recursively flattens a nested dictionary."""
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(self._flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
+
+
     def compare_results(self, baseline: BaselineMetrics,
                         reproduced: Dict[str, float]) -> List[ComparisonResult]:
         """
-        Compare reproduced results to baseline metrics.
-
-        Baseline format: outputs_all_methods/sentence/minimal/bm25/recall@10
-        Reproduced format: outputs_all_methods/sentence/minimal/retrieval/bm25/metrics/recall@10
-
-        Args:
-            baseline: Baseline metrics from paper
-            reproduced: Metrics from reproduced experiments (can be nested paths)
-
-        Returns:
-            List of ComparisonResult objects
+        Compare reproduced results to baseline metrics, but also include all metrics from reproduced results even if missing from baseline.
+        Baseline value will be 'N/A' for those metrics, and status will be 'N/A'.
         """
         comparisons = []
 
-        # Debug logging for metric matching
-        logger.debug(f"Baseline has {len(baseline.metrics)} metrics")
-        logger.debug(f"Reproduced has {len(reproduced)} metrics")
-        logger.debug(
-            f"Sample baseline keys: {list(baseline.metrics.keys())[:3]}")
-        logger.debug(f"Sample reproduced keys: {list(reproduced.keys())[:3]}")
+        # Flatten nested dicts in reproduced metrics (if any)
+        flat_reproduced = self._flatten_dict(reproduced) if any(isinstance(v, dict) for v in reproduced.values()) else reproduced
+
+        # Normalize all keys in both baseline and reproduced dicts
+        # For duplicates after normalization, prefer entries with fewer path segments (shorter keys)
+        norm_baseline = {}
+        for k, v in baseline.metrics.items():
+            norm_key = self._normalize_metric_key(str(k))
+            if norm_key not in norm_baseline or str(k).count('/') < str(norm_baseline[norm_key][0]).count('/'):
+                norm_baseline[norm_key] = (k, v)
+        
+        norm_reproduced = {}
+        for k, v in flat_reproduced.items():
+            norm_key = self._normalize_metric_key(str(k))
+            # Prefer entries with fewer slashes (e.g., 'root/accuracy' over 'root/root/root/accuracy')
+            if norm_key not in norm_reproduced or str(k).count('/') < str(norm_reproduced[norm_key][0]).count('/'):
+                norm_reproduced[norm_key] = (k, v)
+
+        # Log all keys and values for debugging
+        logger.info(f"[DEBUG] Baseline metric keys/values: {list(baseline.metrics.items())}")
+        logger.info(f"[DEBUG] Reproduced metric keys/values: {list(flat_reproduced.items())}")
+        logger.info(f"[DEBUG] Normalized baseline keys: {list(norm_baseline.keys())}")
+        logger.info(f"[DEBUG] Normalized reproduced keys: {list(norm_reproduced.keys())}")
 
         matched_count = 0
         unmatched_baseline = []
+        matched_keys = set()
 
-        for baseline_key, baseline_value in baseline.metrics.items():
-            # Simple exact matching since keys should be identical when both from complete_results.json
-            if baseline_key in reproduced:
-                reproduced_value = reproduced[baseline_key]
+        # Compare all normalized keys, including flat keys (no config path)
+        for norm_key, (baseline_key, baseline_value) in norm_baseline.items():
+            if norm_key in norm_reproduced:
+                repro_key, reproduced_value = norm_reproduced[norm_key]
                 matched_count += 1
+                matched_keys.add(norm_key)
 
                 difference = reproduced_value - baseline_value
 
@@ -544,9 +811,16 @@ JSON:"""
                 else:
                     percent_diff = float('inf') if difference != 0 else 0
 
-                within_threshold = abs(percent_diff) <= (self.threshold * 100)
+                # Use the key itself as configuration if no path structure
+                if '/' in baseline_key:
+                    metric_name = baseline_key.split('/')[-1]
+                    config = baseline_key
+                else:
+                    metric_name = baseline_key
+                    config = baseline_key
 
-                metric_name = baseline_key.split('/')[-1]
+                # Define within_threshold: True if percent_diff is within self.threshold * 100
+                within_threshold = abs(percent_diff) <= self.threshold * 100
 
                 comparisons.append(ComparisonResult(
                     metric_name=metric_name,
@@ -555,124 +829,46 @@ JSON:"""
                     difference=difference,
                     percent_difference=percent_diff,
                     within_threshold=within_threshold,
-                    configuration=baseline_key
+                    configuration=config
                 ))
             else:
-                baseline_parts = baseline_key.split('/')
+                unmatched_baseline.append(baseline_key)
 
-                if len(baseline_parts) < 5:
-                    logger.warning(
-                        f"Baseline key has unexpected format: {baseline_key}")
-                    unmatched_baseline.append(baseline_key)
-                    continue
-
-                exp_set = baseline_parts[0]  # e.g., outputs_all_methods
-                granularity = baseline_parts[1]  # e.g., sentence
-                strategy = baseline_parts[2]  # e.g., minimal
-                task_type = baseline_parts[3]  # e.g., retrieval or downstream
-                retriever = baseline_parts[4]  # e.g., bm25
-                metric_name = baseline_parts[5] if len(
-                    baseline_parts) > 5 else None  # e.g., recall@10, accuracy
-
-                # Normalize metric names for fuzzy matching
-                metric_variants = [metric_name] if metric_name else []
-                if metric_name:
-                    if metric_name == 'f1':
-                        metric_variants.append('f1_score')
-                    elif metric_name == 'f1_score':
-                        metric_variants.append('f1')
-                    # Add underscore variant
-                    if '_' not in metric_name:
-                        metric_variants.append(metric_name.replace('-', '_'))
-
-                # Find matching reproduced metrics with fuzzy matching
-                matches = []
-
-                # For downstream tasks, we need to also try with 'answerability' subtask
-                # since baseline might be: downstream/bm25/accuracy
-                # but reproduced might be: downstream/bm25/answerability/accuracy
-                search_patterns = []
-                if task_type == 'downstream' and metric_name:
-                    search_patterns.append(
-                        f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/answerability/{metric_name}")
-                    if metric_name == 'f1':
-                        search_patterns.append(
-                            f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/answerability/f1_score")
-                    search_patterns.append(
-                        f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/{metric_name}")
-                elif metric_name:
-                    # For retrieval, direct match
-                    search_patterns.append(
-                        f"{exp_set}/{granularity}/{strategy}/{task_type}/{retriever}/{metric_name}")
-
-                for pattern in search_patterns:
-                    if pattern in reproduced:
-                        matches.append((pattern, reproduced[pattern]))
-                        break
-
-                if not matches:
-                    # Fallback to fuzzy matching
-                    for repro_key, repro_value in reproduced.items():
-                        # Check if this reproduced metric matches the baseline configuration
-                        # Must match: exp_set, granularity, strategy, task_type, retriever
-                        if not (exp_set in repro_key and
-                                granularity in repro_key and
-                                strategy in repro_key and
-                                task_type in repro_key and
-                                retriever in repro_key):
-                            continue
-
-                        if metric_name:
-                            if repro_key.endswith(metric_name):
-                                matches.append((repro_key, repro_value))
-                                break
-                            elif metric_name == 'f1' and repro_key.endswith('f1_score'):
-                                matches.append((repro_key, repro_value))
-                                break
-                            elif metric_name == 'f1_score' and repro_key.endswith('f1'):
-                                matches.append((repro_key, repro_value))
-                                break
-
-                if not matches:
-                    logger.debug(
-                        f"No match found for baseline: {baseline_key}")
-                    unmatched_baseline.append(baseline_key)
-                    continue
-
-                matched_count += 1
-
-                for config_path, reproduced_value in matches:
-                    difference = reproduced_value - baseline_value
-
-                    if baseline_value != 0:
-                        percent_diff = (difference / abs(baseline_value)) * 100
-                    else:
-                        percent_diff = float('inf') if difference != 0 else 0
-
-                    within_threshold = abs(percent_diff) <= (
-                        self.threshold * 100)
-
-                    comparisons.append(ComparisonResult(
-                        metric_name=metric_name,
-                        baseline_value=baseline_value,
-                        reproduced_value=reproduced_value,
-                        difference=difference,
-                        percent_difference=percent_diff,
-                        within_threshold=within_threshold,
-                        configuration=config_path
-                    ))
+        # Now add all metrics from reproduced that were not in baseline
+        for norm_key, (repro_key, reproduced_value) in norm_reproduced.items():
+            if norm_key not in matched_keys:
+                # Use the key itself as configuration if no path structure
+                if '/' in repro_key:
+                    metric_name = repro_key.split('/')[-1]
+                    config = repro_key
+                else:
+                    metric_name = repro_key
+                    config = repro_key
+                comparisons.append(ComparisonResult(
+                    metric_name=metric_name,
+                    baseline_value='N/A',
+                    reproduced_value=reproduced_value,
+                    difference='N/A',
+                    percent_difference='N/A',
+                    within_threshold=False,
+                    configuration=config
+                ))
 
         # Summary logging
         logger.info(
-            f"✓ Matched {matched_count}/{len(baseline.metrics)} baseline metrics")
+            f"✓ Matched {matched_count}/{len(norm_baseline)} baseline metrics (normalized key match, flat keys included)")
         if unmatched_baseline:
             logger.warning(
-                f"⚠️  {len(unmatched_baseline)} baseline metrics had no matches")
+                f"⚠️  {len(unmatched_baseline)} baseline metrics had no matches (after normalization)")
             logger.debug(f"Unmatched: {unmatched_baseline[:5]}")
 
         return comparisons
 
-    def generate_report(self, comparisons: List[ComparisonResult]) -> str:
+    def generate_report(self, comparisons: List[ComparisonResult],
+                       baseline_metrics: dict = None,
+                       reproduced_metrics: dict = None,
+                       baseline_examples: list = None,
+                       reproduced_examples: list = None) -> str:
         """
         Generate a human-readable report of the comparison.
 
@@ -689,6 +885,12 @@ JSON:"""
             ""
         ]
 
+        # If attack metrics are available, show TextAttack-style summary table
+        if reproduced_metrics and any(k in reproduced_metrics for k in ["attack_success_rate", "avg_num_queries", "num_attacks", "num_successful_attacks"]):
+            report_lines.append("TextAttack-Style Attack Results Summary:")
+            report_lines.append(self.generate_attack_summary_table(reproduced_metrics))
+            report_lines.append("")
+
         if not comparisons:
             report_lines.append("No metrics available for comparison.")
             return "\n".join(report_lines)
@@ -703,14 +905,25 @@ JSON:"""
                 by_experiment[exp_set] = []
             by_experiment[exp_set].append(comp)
 
-        # Overall summary
-        total_metrics = len(comparisons)
+        # If per-example results are available, show per-example diffs table
+        if baseline_examples and reproduced_examples:
+            diffs = self.compare_per_example_results(baseline_examples, reproduced_examples)
+            per_example_total = max(len(baseline_examples), len(reproduced_examples))
+            per_example_matches = per_example_total - len(diffs)
+            
+            report_lines.append("\nPer-Example Prediction Differences:")
+            report_lines.append(self.generate_per_example_diff_table(diffs))
+            report_lines.append(f"Per-example matches: {per_example_matches}/{per_example_total}")
+            report_lines.append("")
+
+        # Overall summary (per-example metrics are now included in comparisons)
+        total_comparisons = len(comparisons)
         within_threshold = sum(1 for c in comparisons if c.within_threshold)
 
         report_lines.extend([
-            f"Total comparisons: {total_metrics}",
-            f"Within threshold ({self.threshold*100}%): {within_threshold}/{total_metrics}",
-            f"Success rate: {within_threshold/total_metrics*100:.1f}%",
+            f"Total comparisons: {total_comparisons}",
+            f"Within threshold ({self.threshold*100}%): {within_threshold}/{total_comparisons}",
+            f"Overall success rate: {within_threshold/total_comparisons*100:.1f}%" if total_comparisons > 0 else "Overall success rate: N/A",
             f"Experiment sets analyzed: {len(by_experiment)}",
             "",
             "="*80
@@ -736,24 +949,6 @@ JSON:"""
                     by_config[config] = []
                 by_config[config].append(comp)
 
-            # Show summary for each configuration
-            # Limit to 10 configs
-            for config, config_comps in sorted(by_config.items())[:10]:
-                passing = sum(1 for c in config_comps if c.within_threshold)
-                status = "✓" if passing == len(config_comps) else "✗"
-
-                report_lines.append(
-                    f"  {status} {config}: {passing}/{len(config_comps)} metrics pass"
-                )
-
-                # Show top 3 metrics for this config
-                for comp in sorted(config_comps, key=lambda x: abs(x.percent_difference))[:3]:
-                    status_icon = "✓" if comp.within_threshold else "✗"
-                    report_lines.append(
-                        f"      {status_icon} {comp.metric_name}: baseline={comp.baseline_value:.4f}, "
-                        f"reproduced={comp.reproduced_value:.4f} ({comp.percent_difference:+.2f}%)"
-                    )
-
         # Best performing configurations (closest to baseline)
         report_lines.extend([
             "",
@@ -764,10 +959,15 @@ JSON:"""
 
         best_configs = {}
         for comp in comparisons:
+            # Only aggregate numeric percent differences
+            try:
+                pct = float(comp.percent_difference)
+            except (TypeError, ValueError):
+                continue
             config = '/'.join(comp.configuration.split('/')[1:4])
             if config not in best_configs:
                 best_configs[config] = []
-            best_configs[config].append(abs(comp.percent_difference))
+            best_configs[config].append(abs(pct))
 
         # Average percent difference per config
         config_scores = {
@@ -802,8 +1002,12 @@ JSON:"""
 
         # Sample some interesting comparisons
         sample_size = min(10, len(comparisons))
-        sample = sorted(comparisons, key=lambda x: abs(
-            x.percent_difference))[:sample_size]
+        def _safe_abs_pct(c):
+            try:
+                return abs(float(c.percent_difference))
+            except (TypeError, ValueError):
+                return float('inf')
+        sample = sorted(comparisons, key=_safe_abs_pct)[:sample_size]
 
         # Build comparison summary for LLM
         summary = "Reproduction results across multiple configurations:\n\n"
@@ -816,12 +1020,24 @@ JSON:"""
                 by_exp[exp] = []
             by_exp[exp].append(comp)
 
+        def _fmt_float(val):
+            try:
+                return f"{float(val):.4f}"
+            except (TypeError, ValueError):
+                return str(val)
+
         for exp_set, comps in by_exp.items():
             summary += f"\n{exp_set}:\n"
             for comp in comps[:5]:
                 config = '/'.join(comp.configuration.split('/')[1:3])
-                summary += f"  - {config}/{comp.metric_name}: baseline={comp.baseline_value:.4f}, "
-                summary += f"reproduced={comp.reproduced_value:.4f} ({comp.percent_difference:+.2f}%)\n"
+                baseline_str = _fmt_float(comp.baseline_value)
+                reproduced_str = _fmt_float(comp.reproduced_value)
+                summary += f"  - {config}/{comp.metric_name}: baseline={baseline_str}, "
+                try:
+                    pct = float(comp.percent_difference)
+                    summary += f"reproduced={reproduced_str} ({pct:+.2f}%)\n"
+                except (TypeError, ValueError):
+                    summary += f"reproduced={reproduced_str} (N/A)\n"
 
         system_prompt = """You are an expert in machine learning research and experiment reproduction.
 Analyze the differences between baseline and reproduced results across multiple experimental configurations."""
@@ -850,12 +1066,16 @@ Provide a concise analysis (3-4 paragraphs)."""
             logger.error(f"Failed to generate LLM analysis: {e}")
             return f"LLM analysis failed: {str(e)}"
 
-    def generate_summary_statistics(self, comparisons: List[ComparisonResult]) -> str:
+    def generate_summary_statistics(self, comparisons: List[ComparisonResult],
+                                        per_example_total: int = 0,
+                                        per_example_matches: int = 0) -> str:
         """
         Generate summary statistics grouped by models and configurations.
 
         Args:
             comparisons: List of comparison results
+            per_example_total: Total number of per-example comparisons
+            per_example_matches: Number of per-example matches
 
         Returns:
             Summary statistics string
@@ -884,8 +1104,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("-" * 80)
         for model, comps in sorted(by_model.items()):
             passing = sum(1 for c in comps if c.within_threshold)
-            avg_diff = sum(abs(c.percent_difference)
-                           for c in comps) / len(comps)
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_diff = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0.0
             lines.append(
                 f"  {model:15s}: {passing:3d}/{len(comps):3d} pass  |  "
                 f"avg diff: {avg_diff:6.2f}%"
@@ -906,12 +1131,25 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("-" * 80)
         for gran, comps in sorted(by_granularity.items()):
             passing = sum(1 for c in comps if c.within_threshold)
-            avg_diff = sum(abs(c.percent_difference)
-                           for c in comps) / len(comps)
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_diff = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0.0
             lines.append(
                 f"  {gran:15s}: {passing:3d}/{len(comps):3d} pass  |  "
                 f"avg diff: {avg_diff:6.2f}%"
             )
+
+        # Overall totals (per-example metrics are now included in comparisons)
+        lines.append("")
+        lines.append("Overall Totals:")
+        lines.append("-" * 80)
+        total_comparisons = len(comparisons)
+        total_passing = sum(1 for c in comparisons if c.within_threshold)
+        lines.append(f"  TOTAL: {total_passing}/{total_comparisons} pass ({total_passing/total_comparisons*100:.1f}%)")
 
         lines.append("")
         lines.append("="*80)
@@ -992,8 +1230,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         for gran, comps in sorted(by_granularity.items()):
             passing_count = sum(1 for c in comps if c.within_threshold)
             gran_rate = (passing_count / len(comps) * 100) if comps else 0
-            avg_deviation = sum(abs(c.percent_difference)
-                                for c in comps) / len(comps) if comps else 0
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_deviation = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0
 
             lines.append(f"\n{gran.upper()} Granularity:")
             lines.append(
@@ -1016,8 +1259,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         for exp, comps in sorted(by_exp.items()):
             passing_count = sum(1 for c in comps if c.within_threshold)
             exp_rate = (passing_count / len(comps) * 100) if comps else 0
-            avg_deviation = sum(abs(c.percent_difference)
-                                for c in comps) / len(comps) if comps else 0
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_deviation = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0
 
             lines.append(f"\n{exp}:")
             lines.append(
@@ -1035,22 +1283,36 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("-" * 80)
 
         # Find worst performing metrics
-        worst_metrics = sorted(comparisons, key=lambda x: abs(
-            x.percent_difference), reverse=True)[:5]
+        def _safe_abs_pct_worst(x):
+            try:
+                return abs(float(x.percent_difference))
+            except (TypeError, ValueError):
+                return -float('inf')
+        worst_metrics = sorted(comparisons, key=_safe_abs_pct_worst, reverse=True)[:5]
 
         lines.append("\nTop Issues Identified:")
         for i, comp in enumerate(worst_metrics, 1):
             config_short = '/'.join(comp.configuration.split('/')[1:4])
-            lines.append(
-                f"  {i}. {comp.metric_name} in {config_short}: "
-                f"{comp.percent_difference:+.2f}% deviation"
-            )
+            try:
+                pct = float(comp.percent_difference)
+                lines.append(
+                    f"  {i}. {comp.metric_name} in {config_short}: "
+                    f"{pct:+.2f}% deviation"
+                )
+            except (TypeError, ValueError):
+                lines.append(
+                    f"  {i}. {comp.metric_name} in {config_short}: N/A deviation"
+                )
 
         lines.append("\nPossible Root Causes:")
 
         # Analyze patterns
-        high_deviation_count = sum(
-            1 for c in comparisons if abs(c.percent_difference) > 50)
+        def _is_high_dev(c):
+            try:
+                return abs(float(c.percent_difference)) > 50
+            except (TypeError, ValueError):
+                return False
+        high_deviation_count = sum(1 for c in comparisons if _is_high_dev(c))
         if high_deviation_count > total * 0.3:  # More than 30% have >50% deviation
             lines.append("  • DATA MISMATCH: Many metrics show >50% deviation")
             lines.append(
@@ -1104,10 +1366,14 @@ Provide a concise analysis (3-4 paragraphs)."""
         # Best performing configurations
         best_configs = {}
         for comp in comparisons:
+            try:
+                pct = abs(float(comp.percent_difference))
+            except (TypeError, ValueError):
+                continue
             config = '/'.join(comp.configuration.split('/')[1:4])
             if config not in best_configs:
                 best_configs[config] = []
-            best_configs[config].append(abs(comp.percent_difference))
+            best_configs[config].append(pct)
 
         config_scores = {k: sum(v) / len(v) for k, v in best_configs.items()}
         top_configs = sorted(config_scores.items(), key=lambda x: x[1])[:3]
@@ -1142,7 +1408,7 @@ Provide a concise analysis (3-4 paragraphs)."""
             lines.append(
                 "     3. Check for stochastic processes (set random seeds)")
 
-        lines.append("\EVALLab Agent Enhancements:")
+        lines.append("\\nEVALLab Agent Enhancements:")
         lines.append("  1. BASELINE EXTRACTION:")
         lines.append(
             "     → Improve parsing of configuration-specific metrics")
@@ -1241,7 +1507,10 @@ Provide a concise analysis (3-4 paragraphs)."""
 
     def generate_visualizations(self, comparisons: List[ComparisonResult],
                                 output_dir: Path,
-                                paper_name: str = "Research Paper") -> Dict[str, Path]:
+                                paper_name: str = "Research Paper",
+                                codebase_path: Path = None,
+                                per_example_total: int = 0,
+                                per_example_matches: int = 0) -> Dict[str, Path]:
         """
         Generate plots, tables, and graphs comparing agent results to baseline.
 
@@ -1291,21 +1560,56 @@ Provide a concise analysis (3-4 paragraphs)."""
             })
 
         df = pd.DataFrame(data)
+        
+        # Clean label artifacts (e.g., stray ANSI fragments like '92m') and prep numeric columns
+        def _clean_artifacts(s: str) -> str:
+            try:
+                txt = str(s)
+            except Exception:
+                return s
+            ansi_suffixes = [*(f"{i}m" for i in range(30, 38)), *(f"{i}m" for i in range(90, 98)), "39m", "0m"]
+            for suf in ansi_suffixes:
+                if suf in txt:
+                    txt = txt.replace(suf, "")
+            txt = txt.replace("\u001b", "")
+            return txt
+
+        for col in ['experiment_set', 'granularity', 'strategy', 'task_type', 'retriever', 'metric_name', 'configuration']:
+            if col in df.columns:
+                df[col] = df[col].apply(_clean_artifacts)
+
+        # Numeric columns for plotting; keep originals intact for CSV
+        df['baseline_value_num'] = pd.to_numeric(df.get('baseline_value'), errors='coerce')
+        df['reproduced_value_num'] = pd.to_numeric(df.get('reproduced_value'), errors='coerce')
+        df['percent_difference_num'] = pd.to_numeric(df.get('percent_difference'), errors='coerce')
         generated_files = {}
 
         logger.info(f"Generating visualizations for {len(df)} comparisons...")
+        
+        # Filter to matched-baseline rows for visualization (Option A)
+        df_matched = df[df['baseline_value'] != 'N/A'].copy()
+        if df_matched.empty:
+            logger.warning("All comparisons missing baseline (N/A). Visualizations will be minimal.")
+            df_matched = df.copy()
+
+        # Handle empty DataFrame or missing column gracefully
+        if df.empty or 'within_threshold' not in df.columns:
+            logger.warning("No metric comparisons available or 'within_threshold' column missing. Skipping visualizations.")
+            return generated_files
 
         # 1. Overall Performance Comparison Bar Chart
         fig, ax = plt.subplots(figsize=(13, 8))
-        within_threshold = df['within_threshold'].sum()
-        total = len(df)
+        
+        # All metrics (aggregate + per-example now included in df_matched)
+        within_threshold = df_matched['within_threshold'].sum()
+        total = len(df_matched)
         outside_threshold = total - within_threshold
 
         bars = ax.bar(['Within Threshold\n(Success)', 'Outside Threshold\n(Failed)'],
                       [within_threshold, outside_threshold],
                       color=['#2ecc71', '#e74c3c'])
-        ax.set_ylabel('Number of Metrics', fontsize=12)
-        ax.set_title(f'EVALLab Reproducibility Performance',
+        ax.set_ylabel('Number of Comparisons', fontsize=12)
+        ax.set_title(f'EVALLab Reproducibility Performance\n({total} total comparisons)',
                      fontsize=14, fontweight='bold')
 
         # Add percentage labels on bars
@@ -1324,7 +1628,7 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         # 2. Performance by Configuration
         fig, ax = plt.subplots(figsize=(16, 10))
-        config_stats = df.groupby(['granularity', 'strategy']).agg({
+        config_stats = df_matched.groupby(['granularity', 'strategy']).agg({
             'within_threshold': 'sum',
             'metric_name': 'count'
         }).reset_index()
@@ -1359,74 +1663,71 @@ Provide a concise analysis (3-4 paragraphs)."""
         generated_files['performance_by_configuration'] = file_path
         logger.info(f'✓ Generated: {file_path}')
 
-        # 3. Scatter Plot: Baseline vs Reproduced Values
-        fig, ax = plt.subplots(figsize=(13, 13))
+        # 3. Scatter Plot: Baseline vs Reproduced Values (numeric only)
+        df_scatter = df_matched[df_matched[['baseline_value_num', 'reproduced_value_num']].notna().all(axis=1)].copy()
+        if not df_scatter.empty:
+            fig, ax = plt.subplots(figsize=(13, 13))
 
-        # Color by whether within threshold
-        colors = df['within_threshold'].map(
-            {True: '#2ecc71', False: '#e74c3c'})
-        scatter = ax.scatter(df['baseline_value'], df['reproduced_value'],
-                             c=colors, alpha=0.6, s=50)
+            colors = df_scatter['within_threshold'].map({True: '#2ecc71', False: '#e74c3c'})
+            ax.scatter(df_scatter['baseline_value_num'], df_scatter['reproduced_value_num'],
+                       c=colors, alpha=0.6, s=50)
 
-        # Perfect reproduction line
-        max_val = max(df['baseline_value'].max(), df['reproduced_value'].max())
-        min_val = min(df['baseline_value'].min(), df['reproduced_value'].min())
-        ax.plot([min_val, max_val], [min_val, max_val],
-                'k--', label='Perfect Reproduction', linewidth=2)
+            max_val = max(df_scatter['baseline_value_num'].max(), df_scatter['reproduced_value_num'].max())
+            min_val = min(df_scatter['baseline_value_num'].min(), df_scatter['reproduced_value_num'].min())
+            ax.plot([min_val, max_val], [min_val, max_val], 'k--', label='Perfect Reproduction', linewidth=2)
 
-        # Threshold boundaries (±5%)
-        threshold = 0.05
-        ax.fill_between([min_val, max_val],
-                        [min_val * (1-threshold), max_val * (1-threshold)],
-                        [min_val * (1+threshold), max_val * (1+threshold)],
-                        alpha=0.2, color='green', label=f'±{threshold*100}% threshold')
+            threshold = 0.05
+            ax.fill_between([min_val, max_val],
+                            [min_val * (1-threshold), max_val * (1-threshold)],
+                            [min_val * (1+threshold), max_val * (1+threshold)],
+                            alpha=0.2, color='green', label=f'±{threshold*100}% threshold')
 
-        ax.set_xlabel('Baseline Value', fontsize=12)
-        ax.set_ylabel('Reproduced Value', fontsize=12)
-        ax.set_title('Baseline vs Reproduced Metrics',
-                     fontsize=14, fontweight='bold')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+            ax.set_xlabel('Baseline Value', fontsize=12)
+            ax.set_ylabel('Reproduced Value', fontsize=12)
+            ax.set_title('Baseline vs Reproduced Metrics', fontsize=14, fontweight='bold')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
 
-        file_path = output_dir / 'baseline_vs_reproduced.png'
-        plt.tight_layout()
-        plt.savefig(file_path, dpi=300, bbox_inches="tight")
-        plt.close()
-        generated_files['baseline_vs_reproduced'] = file_path
-        logger.info(f'✓ Generated: {file_path}')
+            file_path = output_dir / 'baseline_vs_reproduced.png'
+            plt.tight_layout()
+            plt.savefig(file_path, dpi=300, bbox_inches="tight")
+            plt.close()
+            generated_files['baseline_vs_reproduced'] = file_path
+            logger.info(f'✓ Generated: {file_path}')
+        else:
+            logger.warning('No numeric baseline/reproduced values available for scatter plot. Skipping.')
 
-        # 4. Distribution of Percent Differences
-        fig, ax = plt.subplots(figsize=(15, 7))
+        # 4. Distribution of Percent Differences (numeric only)
+        df_hist = df_matched[df_matched['percent_difference_num'].notna()].copy()
+        if not df_hist.empty:
+            fig, ax = plt.subplots(figsize=(15, 7))
 
-        # Cap extreme values for better visualization
-        percent_diff_capped = df['percent_difference'].clip(-50, 50)
+            percent_diff_capped = df_hist['percent_difference_num'].clip(-50, 50)
 
-        ax.hist(percent_diff_capped, bins=50,
-                color='#3498db', alpha=0.7, edgecolor='black')
-        ax.axvline(x=0, color='green', linestyle='--',
-                   linewidth=2, label='Perfect match')
-        ax.axvline(x=-5, color='orange', linestyle='--',
-                   alpha=0.7, label='±5% threshold')
-        ax.axvline(x=5, color='orange', linestyle='--', alpha=0.7)
+            ax.hist(percent_diff_capped, bins=50, color='#3498db', alpha=0.7, edgecolor='black')
+            ax.axvline(x=0, color='green', linestyle='--', linewidth=2, label='Perfect match')
+            ax.axvline(x=-5, color='orange', linestyle='--', alpha=0.7, label='±5% threshold')
+            ax.axvline(x=5, color='orange', linestyle='--', alpha=0.7)
 
-        ax.set_xlabel('Percent Difference (%)', fontsize=12)
-        ax.set_ylabel('Frequency', fontsize=12)
-        ax.set_title('Distribution of Metric Deviations',
-                     fontsize=14, fontweight='bold')
-        ax.legend()
+            ax.set_xlabel('Percent Difference (%)', fontsize=12)
+            ax.set_ylabel('Frequency', fontsize=12)
+            ax.set_title('Distribution of Metric Deviations', fontsize=14, fontweight='bold')
+            ax.legend()
 
-        file_path = output_dir / 'deviation_distribution.png'
-        plt.tight_layout()
-        plt.savefig(file_path, dpi=300, bbox_inches="tight")
-        plt.close()
-        generated_files['deviation_distribution'] = file_path
-        logger.info(f'✓ Generated: {file_path}')
+            file_path = output_dir / 'deviation_distribution.png'
+            plt.tight_layout()
+            plt.savefig(file_path, dpi=300, bbox_inches="tight")
+            plt.close()
+            generated_files['deviation_distribution'] = file_path
+            logger.info(f'✓ Generated: {file_path}')
+        else:
+            logger.warning('No numeric percent differences available for histogram. Skipping.')
 
         # 5. Heatmap: Performance by Granularity and Task Type
-        if 'granularity' in df.columns and 'task_type' in df.columns:
+        if 'granularity' in df_matched.columns and 'task_type' in df_matched.columns:
             fig, ax = plt.subplots(figsize=(13, 8))
 
-            pivot = df.pivot_table(
+            pivot = df_matched.pivot_table(
                 values='within_threshold',
                 index='granularity',
                 columns='task_type',
@@ -1448,6 +1749,11 @@ Provide a concise analysis (3-4 paragraphs)."""
             logger.info(f'✓ Generated: {file_path}')
 
         # 6. Summary Statistics Table
+        # Use numeric percent difference for aggregates if available
+        mean_abs = df_matched['percent_difference_num'].abs().mean()
+        med_abs = df_matched['percent_difference_num'].abs().median()
+        std_abs = df_matched['percent_difference_num'].std()
+
         summary_data = {
             'Metric': [
                 'Total Comparisons',
@@ -1459,13 +1765,13 @@ Provide a concise analysis (3-4 paragraphs)."""
                 'Std Dev of Deviations'
             ],
             'Value': [
-                f"{len(df)}",
-                f"{df['within_threshold'].sum()}",
-                f"{(~df['within_threshold']).sum()}",
-                f"{df['within_threshold'].mean() * 100:.2f}%",
-                f"{df['percent_difference'].abs().mean():.2f}%",
-                f"{df['percent_difference'].abs().median():.2f}%",
-                f"{df['percent_difference'].std():.2f}%"
+                f"{len(df_matched)}",
+                f"{df_matched['within_threshold'].sum()}",
+                f"{len(df_matched) - df_matched['within_threshold'].sum()}",
+                f"{df_matched['within_threshold'].mean() * 100:.2f}%",
+                f"{(0 if pd.isna(mean_abs) else mean_abs):.2f}%",
+                f"{(0 if pd.isna(med_abs) else med_abs):.2f}%",
+                f"{(0 if pd.isna(std_abs) else std_abs):.2f}%"
             ]
         }
 
@@ -1504,10 +1810,122 @@ Provide a concise analysis (3-4 paragraphs)."""
         logger.info(f'✓ Generated: {file_path}')
 
         # 7. Export detailed CSV
-        csv_path = output_dir / 'detailed_comparison.csv'
-        df.to_csv(csv_path, index=False)
-        generated_files['detailed_csv'] = csv_path
-        logger.info(f"✓ Exported detailed CSV: {csv_path}")
+        # Export matched-only and unmatched CSVs
+        csv_matched = output_dir / 'detailed_comparison.csv'
+        df_matched.to_csv(csv_matched, index=False)
+        generated_files['detailed_csv'] = csv_matched
+        logger.info(f"✓ Exported matched-only CSV: {csv_matched}")
+
+        df_unmatched = df[df['baseline_value'] == 'N/A']
+        if not df_unmatched.empty:
+            csv_unmatched = output_dir / 'detailed_unmatched.csv'
+            df_unmatched.to_csv(csv_unmatched, index=False)
+            generated_files['unmatched_csv'] = csv_unmatched
+            logger.info(f"✓ Exported unmatched CSV: {csv_unmatched}")
+
+        # Add per_example_diffs.html if it exists
+        per_example_diffs_path = output_dir / 'per_example_diffs.html'
+        if per_example_diffs_path.exists():
+            generated_files['per_example_diffs'] = per_example_diffs_path
+
+        # Generate a standalone per_example_metrics.html (always, if any comparison rows exist)
+        # This provides an iframe-able metrics view even when no per-example diffs are available.
+        # ENHANCED: Also includes pytest test details if available.
+        try:
+            metrics_rows = []
+            if not df.empty:
+                # Build HTML table rows similar to dashboard inline table
+                for _, row in df.iterrows():
+                    pd_val = pd.to_numeric(row.get('percent_difference'), errors='coerce')
+                    diff_class = 'diff-pos' if (pd_val >= 0 if not pd.isna(pd_val) else False) else 'diff-neg'
+                    base_val = pd.to_numeric(row.get('baseline_value'), errors='coerce')
+                    repr_val = pd.to_numeric(row.get('reproduced_value'), errors='coerce')
+                    base_str = f"{base_val:.4f}" if not pd.isna(base_val) else str(row.get('baseline_value', 'N/A'))
+                    repr_str = f"{repr_val:.4f}" if not pd.isna(repr_val) else str(row.get('reproduced_value', 'N/A'))
+                    pd_str = f"{pd_val:+.2f}%" if not pd.isna(pd_val) else str(row.get('percent_difference', 'N/A'))
+                    status = 'PASS' if row.get('within_threshold') else 'FAIL'
+                    status_class = 'status-pass' if row.get('within_threshold') else 'status-fail'
+                    metrics_rows.append(
+                        f"<tr>"
+                        f"<td>{row.get('configuration', 'N/A')}</td>"
+                        f"<td>{row.get('metric_name', 'N/A')}</td>"
+                        f"<td>{base_str}</td>"
+                        f"<td>{repr_str}</td>"
+                        f"<td class='{diff_class}'>{pd_str}</td>"
+                        f"<td class='{status_class}'>{status}</td>"
+                        f"</tr>"
+                    )
+            
+            # Add pytest test details section if available (from complete_results.json -> test_details)
+            pytest_section = ""
+            try:
+                # Look for test_details in comparisons (stored from complete_results.json)
+                test_details = []
+                # Try to find test_details from the codebase complete_results.json
+                if codebase_path:
+                    complete_results_path = codebase_path / 'complete_results.json'
+                    if complete_results_path.exists():
+                        with open(complete_results_path, 'r') as f:
+                            cr_data = json.load(f)
+                            if 'test_details' in cr_data:
+                                test_details = cr_data.get('test_details', [])
+                
+                if test_details:
+                    pytest_rows = []
+                    for test in test_details:
+                        outcome = test.get('outcome', 'UNKNOWN')
+                        test_name = test.get('test_name', 'unknown_test')
+                        if outcome == 'PASSED':
+                            outcome_class = 'status-pass'
+                            outcome_emoji = '✓'
+                        elif outcome == 'FAILED':
+                            outcome_class = 'status-fail'
+                            outcome_emoji = '✗'
+                        elif outcome == 'SKIPPED':
+                            outcome_class = 'status-skip'
+                            outcome_emoji = '⊘'
+                        else:
+                            outcome_class = 'status-error'
+                            outcome_emoji = '⚠'
+                        pytest_rows.append(
+                            f"<tr><td>{test_name}</td><td class='{outcome_class}'>{outcome_emoji} {outcome}</td></tr>"
+                        )
+                    pytest_section = (
+                        "<h3 style='margin-top:30px;'>Pytest Test Results</h3>"
+                        "<p style='color:#555;font-size:13px;'>Individual test outcomes captured by EVALLab during experiment execution.</p>"
+                        "<table class='metrics-table' style='max-width:600px;'>"
+                        "<tr><th>Test Name</th><th>Outcome</th></tr>"
+                        "{rows}"
+                        "</table>"
+                    ).format(rows="".join(pytest_rows))
+            except Exception as e:
+                logger.debug(f"Could not extract pytest test details: {e}")
+            
+            # Build HTML with escaped braces (double {{ }}) to avoid f-string evaluation issues
+            download_link = ""
+            if 'detailed_csv' in generated_files:
+                download_link = f"<p style='margin-top:10px;'><a href='{generated_files['detailed_csv'].name}' target='_blank'>Download detailed_comparison.csv</a></p>"
+            rows_html = "".join(metrics_rows) if metrics_rows else "<tr><td colspan='6' style='padding:12px;'>No metrics available.</td></tr>"
+            metrics_table_html = (
+                "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Per-Example Metrics - {paper}</title>"
+                "<style>body{{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;margin:16px;background:#f9f9f9;}}"
+                ".metrics-table{{border-collapse:collapse;width:100%;}} .metrics-table th,.metrics-table td{{border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:center;}}"
+                ".metrics-table th{{background:#eaf1fb;}} .metrics-table tr:nth-child(even){{background:#f4f8fc;}}"
+                ".status-pass{{color:#27ae60;font-weight:bold;}} .status-fail{{color:#e74c3c;font-weight:bold;}}"
+                ".status-skip{{color:#f39c12;font-weight:bold;}} .status-error{{color:#e74c3c;font-weight:bold;}}"
+                ".diff-pos{{color:#2980b9;}} .diff-neg{{color:#e67e22;}}"
+                "</style></head><body>"
+                "<h2>Per-Example Metrics for {paper}</h2>"
+                "<p style='color:#555;font-size:13px;'>This table lists all metric comparisons reproduced by EVALLab. Baseline 'N/A' indicates no matching baseline metric was found.</p>"
+                "<table class='metrics-table'><tr><th>Configuration</th><th>Metric</th><th>Baseline</th><th>Reproduced</th><th>Diff (%)</th><th>Status</th></tr>{rows}</table>{download}{pytest}</body></html>"
+            ).format(paper=paper_name, rows=rows_html, download=download_link, pytest=pytest_section)
+            pem_path = output_dir / 'per_example_metrics.html'
+            with open(pem_path, 'w', encoding='utf-8') as f:
+                f.write(metrics_table_html)
+            generated_files['per_example_metrics'] = pem_path
+            logger.info(f"✓ Generated per-example metrics HTML: {pem_path}")
+        except Exception as e:
+            logger.warning(f"Failed to generate per_example_metrics.html: {e}")
 
         # Generate index HTML
         html_content = self._generate_visualization_index(

@@ -7,7 +7,6 @@ Outputs local codebase path for Stage 3 (Experiment Execution).
 """
 
 import logging
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, List

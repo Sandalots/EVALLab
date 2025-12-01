@@ -1,5 +1,3 @@
-import logging
-from src.pipeline import ColoredFormatter
 """===============================================================================
 EVALLAB ENTRYPOINT: RUNS THE EVALLAB PIPELINE
 
@@ -17,6 +15,9 @@ import argparse
 from pathlib import Path
 import json
 import traceback
+
+import logging
+from src.pipeline import ColoredFormatter
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
@@ -53,8 +54,7 @@ def main():
     print("=" * 100 + "\n")
 
     # ... (rest of main function body)
-
-    args = parser.parse_args()
+    # NOTE: avoid parsing args twice (can cause subtle issues)
 
     # Clear screen for fresh output (optional)
     print("\n" * 2)
@@ -305,42 +305,49 @@ def main():
                       'peak_memory_mb': peak_mb}, f)
 
         # Regenerate the per-paper HTML so it picks up the new resource_usage.json
-        from src.result_evaluator import ResultEvaluator
-        result_evaluator = ResultEvaluator()
-        # Find the files generated in the output_dir
-        import pandas as pd
-        # Try to load the detailed_comparison.csv for the DataFrame
-        detailed_csv = output_dir / 'detailed_comparison.csv'
+        # Harden this block so minor dashboard issues don't flip success to failure.
+        try:
+            from src.result_evaluator import ResultEvaluator
+            result_evaluator = ResultEvaluator()
+            # Find the files generated in the output_dir
+            import pandas as pd
+            # Try to load the detailed_comparison.csv for the DataFrame
+            detailed_csv = output_dir / 'detailed_comparison.csv'
 
-        if detailed_csv.exists():
-            df = pd.read_csv(detailed_csv)
-            # Try to infer the paper name from the directory
-            paper_name = output_dir.name
-            # Map expected keys to files
-            file_map = {
-                'overall_performance': output_dir / 'overall_performance.png',
-                'performance_by_configuration': output_dir / 'performance_by_configuration.png',
-                'baseline_vs_reproduced': output_dir / 'baseline_vs_reproduced.png',
-                'deviation_distribution': output_dir / 'deviation_distribution.png',
-                'heatmap_granularity_tasktype': output_dir / 'heatmap_granularity_tasktype.png',
-                'summary_statistics': output_dir / 'summary_statistics.png',
-                'detailed_csv': output_dir / 'detailed_comparison.csv',
-                'visualizations_html': output_dir / 'visualizations.html',
-                'resource_usage': output_dir / 'resource_usage.json',
-                'agent_log': output_dir / 'agent_execution.log',
-                'results_txt': next((f for f in output_dir.glob('*_results.txt')), None),
-            }
-            # Remove any missing files
-            files = {k: v for k, v in file_map.items() if v and v.exists()}
-            # Regenerate the per-paper HTML using the helper.dashboard function
-            from src.helper.dashboard import generate_visualization_index_html
-            html_content = generate_visualization_index_html(files, df, paper_name, output_dir)
-            html_path = output_dir / 'visualizations.html'
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
+            if detailed_csv.exists():
+                df = pd.read_csv(detailed_csv)
+                # Try to infer the paper name from the directory
+                paper_name = output_dir.name
+                # Map expected keys to files
+                file_map = {
+                    'overall_performance': output_dir / 'overall_performance.png',
+                    'performance_by_configuration': output_dir / 'performance_by_configuration.png',
+                    'baseline_vs_reproduced': output_dir / 'baseline_vs_reproduced.png',
+                    'deviation_distribution': output_dir / 'deviation_distribution.png',
+                    'heatmap_granularity_tasktype': output_dir / 'heatmap_granularity_tasktype.png',
+                    'summary_statistics': output_dir / 'summary_statistics.png',
+                    'detailed_csv': output_dir / 'detailed_comparison.csv',
+                    'per_example_diffs': output_dir / 'per_example_diffs.html',
+                        'per_example_metrics': output_dir / 'per_example_metrics.html',
+                    'visualizations_html': output_dir / 'visualizations.html',
+                    'resource_usage': output_dir / 'resource_usage.json',
+                    'agent_log': output_dir / 'agent_execution.log',
+                    'results_txt': next((f for f in output_dir.glob('*_results.txt')), None),
+                }
+                # Remove any missing files
+                files = {k: v for k, v in file_map.items() if v and v.exists()}
+                # Regenerate the per-paper HTML using the helper.dashboard function
+                from src.helper.dashboard import generate_visualization_index_html
+                html_content = generate_visualization_index_html(files, df, paper_name, output_dir)
+                html_path = output_dir / 'visualizations.html'
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
 
-        # Regenerate the top-level dashboard as well
-        result_evaluator.generate_visualizations_index(output_dir.parent)
+            # Regenerate the top-level dashboard as well
+            result_evaluator.generate_visualizations_index(output_dir.parent)
+        except Exception as regen_exc:
+            print(f"⚠️  Warning: Post-run HTML regeneration failed: {regen_exc}")
+            # Do not return failure here; main pipeline already completed successfully.
 
         if 'error' in results:
             print(f"\n❌ Error: {results['error']}")
