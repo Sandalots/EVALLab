@@ -6,18 +6,15 @@ initializes the agent's pipeline, and orchestrates the full research paper repro
 ===============================================================================
 """
 
-from src.pipeline import ReproductionAgent
+from src.pipeline import ReproductionAgent, ColoredFormatter
 import sys
-
 import time
 import tracemalloc
 import argparse
 from pathlib import Path
 import json
 import traceback
-
 import logging
-from src.pipeline import ColoredFormatter
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
