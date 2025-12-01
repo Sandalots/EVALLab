@@ -798,9 +798,11 @@ class ReproductionAgent:
             logger.info(f"✓ Per-example diffs saved to {viz_log_dir / 'per_example_diffs.html'} and .csv")
         else:
             logger.info("Per-example baseline or reproduced log.csv not found or empty; skipping per-example diff.")
+            baseline_log = []
+            reproduced_log = []
 
         # Generate comprehensive report
-        report = self.result_evaluator.generate_report(comparisons)
+        report = self.result_evaluator.generate_report(comparisons, baseline_examples=baseline_log, reproduced_examples=reproduced_log)
         logger.info("\n" + report)
 
         # Generate summary statistics
@@ -886,11 +888,19 @@ class ReproductionAgent:
             # Save visualizations in per-paper subdirectory
             viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
             paper_name = paper_path.stem  # Get filename without extension
+            
+            # Calculate per-example counts for visualizations
+            per_example_total = max(len(baseline_log), len(reproduced_log)) if baseline_log and reproduced_log else 0
+            per_example_diffs_list = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log) if baseline_log and reproduced_log else []
+            per_example_matches = per_example_total - len(per_example_diffs_list) if per_example_total > 0 else 0
+            
             viz_files = self.result_evaluator.generate_visualizations(
                 comparisons,
                 output_dir=viz_dir,
                 paper_name=paper_name,
-                codebase_path=codebase_info.path  # Pass codebase path for test_details
+                codebase_path=codebase_info.path,  # Pass codebase path for test_details
+                per_example_total=per_example_total,
+                per_example_matches=per_example_matches
             )
             logger.info(f"✓ Generated {len(viz_files)} visualization files")
             logger.info(
@@ -1229,9 +1239,48 @@ class ReproductionAgent:
             # Prefer attack script for faster metric extraction
             attack_script = codebase_info.path / 'examples' / 'attack' / 'attack_roberta_sst2_textfooler.sh'
             if attack_script.exists():
-                logger.info(f"Running textattack attack script: {attack_script}")
+                # Dynamically patch the script to output log.csv to codebase root
+                logger.info(f"Running textattack attack script (with dynamic log.csv patch): {attack_script}")
+                
+                # Remove existing log.csv if it exists to avoid permission issues
+                log_csv_path = codebase_info.path / 'log.csv'
+                if log_csv_path.exists():
+                    try:
+                        log_csv_path.unlink()
+                        logger.info(f"  Removed existing log.csv: {log_csv_path}")
+                    except Exception as e:
+                        logger.warning(f"  Could not remove existing log.csv: {e}")
+                
+                # Read original script
+                with open(attack_script, 'r') as f:
+                    original_content = f.read()
+                
+                # Create patched version that outputs log.csv to codebase root
+                patched_content = original_content
+                if '--log-to-csv' not in original_content:
+                    # Use absolute path to avoid any directory confusion
+                    log_csv_abs_path = str(codebase_info.path / 'log.csv')
+                    # If script doesn't already specify log output, add it
+                    patched_content = original_content.replace(
+                        '--num-examples',
+                        f'--log-to-csv "{log_csv_abs_path}" --num-examples'
+                    )
+                
+                # Write patched script to temp file
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False, dir=codebase_info.path) as temp_script:
+                    temp_script.write(patched_content)
+                    temp_script_path = Path(temp_script.name)
+                
+                # Make temp script executable
+                import os
+                os.chmod(temp_script_path, 0o755)
+                
+                logger.info(f"  Created temporary patched script: {temp_script_path}")
+                logger.info(f"  Log will be written to: {log_csv_path}")
+                
                 config = ExperimentConfig(
-                    script_path=attack_script,
+                    script_path=temp_script_path,
                     args=[],
                     env_vars={},
                     working_dir=codebase_info.path,
@@ -1239,6 +1288,13 @@ class ReproductionAgent:
                 )
                 result = self.experiment_executor.run_experiment(config)
                 results.append(result)
+                
+                # Clean up temp script
+                try:
+                    temp_script_path.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to delete temp script: {e}")
+                
                 if result.success:
                     logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
                 else:

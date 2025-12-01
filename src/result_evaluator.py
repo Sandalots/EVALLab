@@ -889,20 +889,32 @@ JSON:"""
             by_experiment[exp_set].append(comp)
 
         # If per-example results are available, show per-example diffs
+        per_example_total = 0
+        per_example_matches = 0
         if baseline_examples and reproduced_examples:
             diffs = self.compare_per_example_results(baseline_examples, reproduced_examples)
+            per_example_total = max(len(baseline_examples), len(reproduced_examples))
+            per_example_matches = per_example_total - len(diffs)
+            
             report_lines.append("\nPer-Example Prediction Differences:")
             report_lines.append(self.generate_per_example_diff_table(diffs))
+            report_lines.append(f"Per-example matches: {per_example_matches}/{per_example_total}")
             report_lines.append("")
 
-        # Overall summary
+        # Overall summary (including per-example metrics)
         total_metrics = len(comparisons)
         within_threshold = sum(1 for c in comparisons if c.within_threshold)
+        
+        # Add per-example metrics to totals
+        total_with_examples = total_metrics + per_example_total
+        within_threshold_with_examples = within_threshold + per_example_matches
 
         report_lines.extend([
-            f"Total comparisons: {total_metrics}",
-            f"Within threshold ({self.threshold*100}%): {within_threshold}/{total_metrics}",
-            f"Success rate: {within_threshold/total_metrics*100:.1f}%",
+            f"Aggregate metric comparisons: {total_metrics}",
+            f"Per-example comparisons: {per_example_total}",
+            f"Total comparisons (aggregate + per-example): {total_with_examples}",
+            f"Within threshold ({self.threshold*100}%): {within_threshold}/{total_metrics} aggregate, {per_example_matches}/{per_example_total} per-example",
+            f"Overall success rate: {within_threshold_with_examples/total_with_examples*100:.1f}%" if total_with_examples > 0 else "Overall success rate: N/A",
             f"Experiment sets analyzed: {len(by_experiment)}",
             "",
             "="*80
@@ -1375,7 +1387,7 @@ Provide a concise analysis (3-4 paragraphs)."""
             lines.append(
                 "     3. Check for stochastic processes (set random seeds)")
 
-        lines.append("\EVALLab Agent Enhancements:")
+        lines.append("\\nEVALLab Agent Enhancements:")
         lines.append("  1. BASELINE EXTRACTION:")
         lines.append(
             "     → Improve parsing of configuration-specific metrics")
@@ -1475,7 +1487,9 @@ Provide a concise analysis (3-4 paragraphs)."""
     def generate_visualizations(self, comparisons: List[ComparisonResult],
                                 output_dir: Path,
                                 paper_name: str = "Research Paper",
-                                codebase_path: Path = None) -> Dict[str, Path]:
+                                codebase_path: Path = None,
+                                per_example_total: int = 0,
+                                per_example_matches: int = 0) -> Dict[str, Path]:
         """
         Generate plots, tables, and graphs comparing agent results to baseline.
 
@@ -1564,15 +1578,22 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         # 1. Overall Performance Comparison Bar Chart
         fig, ax = plt.subplots(figsize=(13, 8))
-        within_threshold = df_matched['within_threshold'].sum()
-        total = len(df_matched)
-        outside_threshold = total - within_threshold
+        
+        # Aggregate metrics
+        within_threshold_agg = df_matched['within_threshold'].sum()
+        total_agg = len(df_matched)
+        outside_threshold_agg = total_agg - within_threshold_agg
+        
+        # Add per-example metrics
+        within_threshold = within_threshold_agg + per_example_matches
+        outside_threshold = outside_threshold_agg + (per_example_total - per_example_matches)
+        total = total_agg + per_example_total
 
         bars = ax.bar(['Within Threshold\n(Success)', 'Outside Threshold\n(Failed)'],
                       [within_threshold, outside_threshold],
                       color=['#2ecc71', '#e74c3c'])
-        ax.set_ylabel('Number of Metrics', fontsize=12)
-        ax.set_title(f'EVALLab Reproducibility Performance',
+        ax.set_ylabel('Number of Comparisons (Aggregate + Per-Example)', fontsize=12)
+        ax.set_title(f'EVALLab Reproducibility Performance\n({total_agg} aggregate + {per_example_total} per-example = {total} total)',
                      fontsize=14, fontweight='bold')
 
         # Add percentage labels on bars
