@@ -15,12 +15,18 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import json
 import time
+import shutil
+import traceback
+from datetime import datetime
+import threading
+import json as _json
+import re
+
 
 logger = logging.getLogger(__name__)
 
 def ensure_tensorflow_hub(venv_python):
     """Ensure tensorflow_hub and tensorflow are installed in the venv."""
-    import subprocess
     check_code = (
         "import importlib.util; "
         "print(importlib.util.find_spec('tensorflow_hub') is not None); "
@@ -30,11 +36,14 @@ def ensure_tensorflow_hub(venv_python):
     lines = result.stdout.strip().splitlines()
     tfhub_installed = lines[0].strip() == 'True' if lines else False
     tf_installed = lines[1].strip() == 'True' if len(lines) > 1 else False
+
     pkgs_to_install = []
     if not tfhub_installed:
         pkgs_to_install.append("tensorflow_hub")
+
     if not tf_installed:
         pkgs_to_install.append("tensorflow")
+
     if pkgs_to_install:
         print(f"[INFO] Installing missing packages in venv: {pkgs_to_install}")
         subprocess.run([venv_python, "-m", "pip", "install"] + pkgs_to_install, check=True)
@@ -45,28 +54,34 @@ def ensure_module_in_venv(venv_python: str, module_name: str, package_name: Opti
     If not present, attempt to install via pip using `package_name` (or `module_name` if omitted).
     Returns True if the module is available after the operation, else False.
     """
-    import subprocess
     check_code = (
         "import importlib.util; "
         f"print(importlib.util.find_spec('{module_name}') is not None)"
     )
+
     try:
         result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
         available = result.stdout.strip().splitlines()[0].strip() == 'True'
+        
     except Exception:
         available = False
+
     if available:
         return True
+    
     # Try install
     pkg = package_name or module_name
+
     try:
         subprocess.run([venv_python, "-m", "pip", "install", pkg], check=True, capture_output=True, text=True, timeout=timeout)
     except subprocess.CalledProcessError as e:
         logger.warning(f"Failed to install {pkg} in venv: {e.stderr}")
         return False
+    
     except subprocess.TimeoutExpired:
         logger.warning(f"Timeout installing {pkg} in venv after {timeout/60:.0f} minutes")
         return False
+    
     # Re-check
     try:
         result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
@@ -487,7 +502,6 @@ class ExperimentExecutor:
             # Check if python executable is actually accessible (not a broken symlink)
             if not python_executable.exists():
                 logger.warning(f"Virtual environment exists but python executable is broken. Recreating venv...")
-                import shutil
                 shutil.rmtree(venv_path)
                 venv_exists = False
             elif requirements_path.exists():
@@ -656,7 +670,6 @@ class ExperimentExecutor:
         self.logger.info(f"[run_experiment] Environment variables: {config.env_vars}")
 
         start_time = time.time()
-        from datetime import datetime
         start_time_str = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')
         self.logger.info(f"[run_experiment] Start time: {start_time_str}")
 
@@ -751,9 +764,7 @@ class ExperimentExecutor:
 
 
         try:
-            import subprocess
-            import threading
-            import json as _json
+
             if is_test_script:
                 # Run with pytest and capture output (use -v for verbose test names)
                 pytest_cmd = [python_cmd, '-m', 'pytest', str(script_path), '--maxfail=100', '--disable-warnings', '-v', '--tb=short']
@@ -836,7 +847,6 @@ class ExperimentExecutor:
             outputs = self._collect_outputs(working_dir)
 
             # Parse stdout for metrics (accuracy, f1, etc.)
-            import re
             metrics = {}
             
             # Apply YAML config extractors if provided
@@ -1068,7 +1078,6 @@ class ExperimentExecutor:
                 duration=duration
             )
         except Exception as e:
-            import traceback
             duration = time.time() - start_time
             tb = traceback.format_exc()
             self.logger.error(f"Experiment failed with error: {e}\n{tb}")

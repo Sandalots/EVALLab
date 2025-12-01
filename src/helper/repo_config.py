@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 import logging
 import yaml
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,6 @@ def list_supported_repos() -> List[str]:
 
 def execute_pre_run_setup(config: RepoConfig, repo_path: Path, logger: logging.Logger) -> None:
     """Execute pre-run setup actions defined in config."""
-    import subprocess
     
     # Install dependencies
     if config.dependencies:
