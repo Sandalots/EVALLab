@@ -656,65 +656,17 @@ class ReproductionAgent:
             logger.info(
                 f"✓ Data validation complete - {len(validation_results['file_stats'])} files, {total_size:.1f}MB total")
 
-        # Check if baseline exists for per-example comparison
-        baseline_dir = codebase_info.path / 'baseline'
-        baseline_log_path = baseline_dir / 'log.csv'
-        baseline_exists = baseline_log_path.exists()
-        
-        # Run experiments (twice if no baseline exists for proper comparison)
+        # Run experiments
         logger.info("\n[Stage 3.6/4] Running experiments...")
         
-        if not baseline_exists:
-            logger.info("ℹ️  No baseline found - will run experiment twice (baseline + comparison)")
-            
-            # First run: establish baseline
-            logger.info("  → Run 1/2: Establishing baseline...")
-            experiment_results = self._run_experiments_unified(
-                paper_content, codebase_info)
-            
-            if not experiment_results:
-                logger.error("No experiments were run successfully")
-                return {'error': 'Experiment execution failed'}
-            
-            # Save first run as baseline
-            reproduced_log_source = codebase_info.path / 'log.csv'
-            reproduced_results_source = codebase_info.path / 'complete_results.json'
-            baseline_dir.mkdir(parents=True, exist_ok=True)
-            import shutil
-            
-            # Save log.csv as baseline if it exists
-            if reproduced_log_source.exists():
-                shutil.copy2(reproduced_log_source, baseline_log_path)
-                logger.info(f"  ✓ Baseline log.csv saved at {baseline_log_path}")
-            
-            # Save complete_results.json as paper_metrics.json (baseline)
-            if reproduced_results_source.exists():
-                paper_metrics_path = codebase_info.path / 'paper_metrics.json'
-                shutil.copy2(reproduced_results_source, paper_metrics_path)
-                logger.info(f"  ✓ Baseline metrics saved at {paper_metrics_path}")
-            else:
-                logger.warning("  ⚠ No complete_results.json found to save as baseline")
-            
-            # Second run: for comparison
-            logger.info("  → Run 2/2: Running comparison experiment...")
-            experiment_results = self._run_experiments_unified(
-                paper_content, codebase_info)
-            
-            if not experiment_results:
-                logger.error("Second run failed")
-                return {'error': 'Experiment execution failed'}
-                
-            logger.info(f"✓ Completed {len(experiment_results)} experiments (2 runs: baseline + comparison)")
-        else:
-            logger.info("ℹ️  Baseline exists - running single experiment for comparison")
-            experiment_results = self._run_experiments_unified(
-                paper_content, codebase_info)
-
-            if not experiment_results:
-                logger.error("No experiments were run successfully")
-                return {'error': 'Experiment execution failed'}
-
-            logger.info(f"✓ Completed {len(experiment_results)} experiments")
+        experiment_results = self._run_experiments_unified(
+            paper_content, codebase_info)
+        
+        if not experiment_results:
+            logger.error("No experiments were run successfully")
+            return {'error': 'Experiment execution failed'}
+        
+        logger.info(f"✓ Completed {len(experiment_results)} experiments")
 
         # Step 6: Evaluate results (Stage 4)
         print("\n" + "="*80)

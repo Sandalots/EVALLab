@@ -488,8 +488,13 @@ class ExperimentExecutor:
         venv_ready = False
         if venv_exists:
             python_executable, _, _ = _get_venv_paths(venv_path)
-            # Always batch install requirements.txt if it exists
-            if requirements_path.exists():
+            # Check if python executable is actually accessible (not a broken symlink)
+            if not python_executable.exists():
+                logger.warning(f"Virtual environment exists but python executable is broken. Recreating venv...")
+                import shutil
+                shutil.rmtree(venv_path)
+                venv_exists = False
+            elif requirements_path.exists():
                 logger.info("Installing all dependencies from requirements.txt in venv...")
                 try:
                     result = subprocess.run(
