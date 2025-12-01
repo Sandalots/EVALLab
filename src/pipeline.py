@@ -715,140 +715,15 @@ class ReproductionAgent:
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")
 
-        # --- Inject per-example metrics into the metrics dictionary ---
-        import shutil
-        baseline_dir = codebase_info.path / 'baseline'
-        baseline_log_path = baseline_dir / 'log.csv'
-        reproduced_log_source = codebase_info.path / 'log.csv'
-        
-        # Check if per-example logs exist and inject them as metrics
-        current_paper_name = str(paper_path.stem).lower() if paper_path else ""
-        skip_per_example = "decontextual" in current_paper_name
-        
-        if (not skip_per_example) and baseline_log_path.exists() and reproduced_log_source.exists():
-            try:
-                baseline_log = self._load_per_example_results(baseline_log_path)
-                reproduced_log = self._load_per_example_results(reproduced_log_source)
-                
-                # Add each per-example result as an individual metric
-                # Format: "TextAttack/per_example_{index}/result"
-                if baseline_log and reproduced_log:
-                    # Create a synthetic experiment set name for per-example results
-                    per_example_key = "TextAttack_PerExample"
-                    if per_example_key not in all_reproduced_metrics:
-                        all_reproduced_metrics[per_example_key] = {}
-                    
-                    # Add each example as a metric (1.0 for match, 0.0 for mismatch)
-                    for i, (baseline_ex, repro_ex) in enumerate(zip(baseline_log, reproduced_log)):
-                        metric_name = f"example_{i+1:03d}_match"
-                        baseline_result = baseline_ex.get('result_type', baseline_ex.get('original_text', ''))
-                        repro_result = repro_ex.get('result_type', repro_ex.get('original_text', ''))
-                        
-                        # Store as 1.0 (match) or 0.0 (mismatch) for easy comparison
-                        match_value = 1.0 if baseline_result == repro_result else 0.0
-                        
-                        # Add to reproduced metrics
-                        all_reproduced_metrics[per_example_key][metric_name] = match_value
-                        
-                        # Add to baseline metrics (always 1.0 since we expect baseline to match itself)
-                        baseline_metric_key = f"{per_example_key}/{metric_name}"
-                        baseline.metrics[baseline_metric_key] = 1.0
-                    
-                    logger.info(f"✓ Injected {len(baseline_log)} per-example metrics into comparison list")
-            except Exception as e:
-                logger.warning(f"Could not inject per-example metrics: {e}")
-
-        # Compare all reproduced metrics to baseline (now includes per-example metrics)
+        # Compare all reproduced metrics to baseline
         comparisons = self.result_evaluator.compare_results(
             baseline, all_reproduced_metrics)
         logger.info(f"✓ Generated {len(comparisons)} metric comparisons")
 
-        # --- Per-example diff integration for HTML visualization ---
-        # Use consistent directory name from paper_path.stem
-        paper_viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
-        
-        # Baseline was already established during experiment run if it didn't exist
-        # Just verify paths and copy to visualization directory
-        baseline_dir = codebase_info.path / 'baseline'
-        baseline_log_path = baseline_dir / 'log.csv'
-        reproduced_log_source = codebase_info.path / 'log.csv'  # Current run's log.csv
-        
-        reproduced_log_path = paper_viz_dir / 'log.csv'
-        viz_log_dir = paper_viz_dir
-        viz_log_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Copy reproduced log.csv to viz directory
-        if reproduced_log_source.exists() and reproduced_log_source.stat().st_size > 0:
-            shutil.copy2(reproduced_log_source, reproduced_log_path)
-        
-        # Copy baseline log to visualization dir for UI and diffing (optional)
-        if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0:
-            shutil.copy2(baseline_log_path, viz_log_dir / 'baseline_log.csv')
-
-        # Decide whether to skip per-example comparison (e.g., for decontextualisation paper)
-        current_paper_name = str(paper_path.stem).lower() if paper_path else ""
-        skip_per_example = "decontextual" in current_paper_name
-        if skip_per_example:
-            logger.info("Skipping per-example comparison for decontextualisation paper as requested.")
-
-        # Only proceed if both baseline and reproduced per-example logs exist and are non-empty
-        if (not skip_per_example) and baseline_log_path.exists() and baseline_log_path.stat().st_size > 0 and reproduced_log_path.exists() and reproduced_log_path.stat().st_size > 0:
-            baseline_log = self._load_per_example_results(baseline_log_path)
-            reproduced_log = self._load_per_example_results(reproduced_log_path)
-            per_example_diffs = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log)
-            logger.info(f"✓ Compared per-example results: {len(per_example_diffs)} mismatches found.")
-            
-            # Generate diff table
-            diff_html = self.result_evaluator.generate_per_example_diff_table(per_example_diffs)
-            
-            # Generate full tables for baseline and reproduced
-            baseline_table = self.result_evaluator.generate_per_example_table(baseline_log, "Baseline Results")
-            reproduced_table = self.result_evaluator.generate_per_example_table(reproduced_log, "Reproduced Results")
-            
-            # Combine into one HTML file
-            combined_html = f"""
-            <html>
-            <head>
-                <title>Per-Example Comparison</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                    h2 {{ color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; }}
-                    table {{ margin: 20px 0; max-width: 100%; overflow-x: auto; }}
-                    .section {{ margin: 30px 0; }}
-                </style>
-            </head>
-            <body>
-                <h1>Per-Example Attack Results Comparison</h1>
-                
-                <div class="section">
-                    <h2>Differences Found: {len(per_example_diffs)}</h2>
-                    {diff_html}
-                </div>
-                
-                <div class="section">
-                    {baseline_table}
-                </div>
-                
-                <div class="section">
-                    {reproduced_table}
-                </div>
-            </body>
-            </html>
-            """
-            
-            with open(viz_log_dir / 'per_example_diffs.html', 'w', encoding='utf-8') as f:
-                f.write(combined_html)
-            import csv
-            if per_example_diffs:
-                with open(viz_log_dir / 'per_example_diffs.csv', 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=per_example_diffs[0].keys())
-                    writer.writeheader()
-                    writer.writerows(per_example_diffs)
-            logger.info(f"✓ Per-example diffs saved to {viz_log_dir / 'per_example_diffs.html'} and .csv")
-        else:
-            logger.info("Per-example baseline or reproduced log.csv not found or empty; skipping per-example diff.")
-            baseline_log = []
-            reproduced_log = []
+        # Per-example results only exist if experiments generated them (e.g., TextAttack log.csv)
+        # These are experiment outputs, not baselines, so we load them only if they exist
+        baseline_log = []
+        reproduced_log = []
 
         # Generate comprehensive report
         report = self.result_evaluator.generate_report(comparisons, baseline_examples=baseline_log, reproduced_examples=reproduced_log)
@@ -941,10 +816,9 @@ class ReproductionAgent:
             viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
             paper_name = paper_path.stem  # Get filename without extension
             
-            # Calculate per-example counts for visualizations
-            per_example_total = max(len(baseline_log), len(reproduced_log)) if baseline_log and reproduced_log else 0
-            per_example_diffs_list = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log) if baseline_log and reproduced_log else []
-            per_example_matches = per_example_total - len(per_example_diffs_list) if per_example_total > 0 else 0
+            # Per-example diffs not needed for visualization (baselines don't exist as CSV files)
+            per_example_total = 0
+            per_example_matches = 0
             
             viz_files = self.result_evaluator.generate_visualizations(
                 comparisons,

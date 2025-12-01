@@ -128,6 +128,7 @@ class ExperimentConfig:
     env_vars: Dict[str, str]
     working_dir: Path
     timeout: int = 3600  # 1 hour default
+    metrics_config: Optional[Dict[str, Any]] = None  # Metrics extraction config from YAML
 
 
 @dataclass
@@ -952,6 +953,40 @@ class ExperimentExecutor:
             # Parse stdout for metrics (accuracy, f1, etc.)
             import re
             metrics = {}
+            
+            # Apply YAML config extractors if provided
+            if config.metrics_config and config.metrics_config.get('extractors'):
+                logger.info(f"[run_experiment] Applying {len(config.metrics_config['extractors'])} config extractors to stdout")
+                for extractor in config.metrics_config['extractors']:
+                    pattern = extractor.get('pattern')
+                    name = extractor.get('name')
+                    transform = extractor.get('transform')
+                    
+                    if not pattern or not name:
+                        continue
+                    
+                    # Search through all stdout lines
+                    for line in stdout_lines + stderr_lines:
+                        match = re.search(pattern, line, re.IGNORECASE)
+                        if match:
+                            try:
+                                value = match.group(1)
+                                
+                                # Apply transformations
+                                if transform == 'percent_to_decimal':
+                                    value = float(value) / 100.0
+                                elif '.' in value or 'e' in value.lower():
+                                    value = float(value)
+                                else:
+                                    value = int(value)
+                                
+                                metrics[name] = value
+                                logger.info(f"[run_experiment] Extracted {name} = {value} via config extractor")
+                                break  # Take first match
+                            except Exception as e:
+                                logger.warning(f"[run_experiment] Failed to extract {name}: {e}")
+            
+            # Fallback to hardcoded patterns for backwards compatibility
             metric_patterns = [
                 # Pattern for "Metric: value" or "Metric = value" format
                 r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",

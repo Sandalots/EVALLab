@@ -248,7 +248,8 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
                 args=exp.get('args', []),
                 env_vars={},
                 working_dir=repo_path,
-                timeout=exp.get('timeout', 600)
+                timeout=exp.get('timeout', 600),
+                metrics_config=config.metrics  # Pass metrics config from YAML
             )
             
             result = executor.run_experiment(exp_config)
