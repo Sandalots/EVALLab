@@ -744,7 +744,10 @@ class ExperimentExecutor:
         env["TF_NUM_INTRAOP_THREADS"] = "1"
 
         # For TextAttack, also set additional env vars and args to ensure single process
-        if 'textattack' in str(config.script_path).lower() or 'textattack' in str(config.working_dir).lower():
+        is_textattack = (
+            'textattack' in str(config.script_path).lower() or 'textattack' in str(config.working_dir).lower()
+        )
+        if is_textattack:
             env["TOKENIZERS_PARALLELISM"] = "false"
             env["PYTHONWARNINGS"] = "ignore"
             env["OPENBLAS_NUM_THREADS"] = "1"
@@ -752,10 +755,13 @@ class ExperimentExecutor:
             env["VECLIB_MAXIMUM_THREADS"] = "1"
             env["IN_PARALLEL"] = "0"
             env["CUDA_VISIBLE_DEVICES"] = ""
-            # If running a shell script, try to add --num_workers=1 or similar if supported
-            # (TextAttack CLI uses --num_workers, but not all scripts may support it)
-            if config.args is not None and '--num_workers' not in config.args:
-                config.args = config.args + ['--num_workers=1']
+            # Always add --log-to-csv log.csv if not present
+            if config.args is not None:
+                if not any(a.startswith('--log-to-csv') for a in config.args):
+                    config.args = config.args + ['--log-to-csv', 'log.csv']
+                # Also add --num_workers=1 if not present
+                if '--num_workers' not in ' '.join(config.args):
+                    config.args = config.args + ['--num_workers=1']
 
         # Set working directory to script's parent
         working_dir = config.working_dir if config.working_dir else script_path.parent

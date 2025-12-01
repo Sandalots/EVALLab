@@ -326,6 +326,7 @@ def main():
                 'heatmap_granularity_tasktype': output_dir / 'heatmap_granularity_tasktype.png',
                 'summary_statistics': output_dir / 'summary_statistics.png',
                 'detailed_csv': output_dir / 'detailed_comparison.csv',
+                'per_example_diffs': output_dir / 'per_example_diffs.html',
                 'visualizations_html': output_dir / 'visualizations.html',
                 'resource_usage': output_dir / 'resource_usage.json',
                 'agent_log': output_dir / 'agent_execution.log',

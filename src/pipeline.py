@@ -702,10 +702,30 @@ class ReproductionAgent:
 
         # --- Per-example diff integration ---
         import shutil
-        baseline_log_path = Path('papers/codebases/TextAttack/log.csv')
-        reproduced_log_path = Path('outputs/visualizations/textattack/log.csv')
-        viz_log_dir = Path('outputs') / 'visualizations' / 'textattack'
+        # Use consistent directory name from paper_path.stem
+        paper_viz_dir = Path('outputs') / 'visualizations' / paper_path.stem
+        
+        # Establish baseline: use first run as baseline for future comparisons
+        baseline_dir = codebase_info.path / 'baseline'
+        baseline_log_path = baseline_dir / 'log.csv'
+        reproduced_log_source = codebase_info.path / 'log.csv'  # Current run's log.csv
+        
+        # If no baseline exists, establish current run as baseline
+        if not baseline_log_path.exists() and reproduced_log_source.exists():
+            logger.info(f"Establishing baseline for {paper_path.stem} from current run")
+            baseline_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(reproduced_log_source, baseline_log_path)
+            logger.info(f"✓ Baseline established at {baseline_log_path}")
+            logger.info("  Future runs will be compared against this baseline")
+        
+        reproduced_log_path = paper_viz_dir / 'log.csv'
+        viz_log_dir = paper_viz_dir
         viz_log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy reproduced log.csv to viz directory
+        if reproduced_log_source.exists() and reproduced_log_source.stat().st_size > 0:
+            shutil.copy2(reproduced_log_source, reproduced_log_path)
+        
         # Copy baseline log to visualization dir for UI and diffing (optional)
         if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0:
             shutil.copy2(baseline_log_path, viz_log_dir / 'baseline_log.csv')

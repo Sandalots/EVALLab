@@ -1605,6 +1605,11 @@ Provide a concise analysis (3-4 paragraphs)."""
         generated_files['detailed_csv'] = csv_path
         logger.info(f"✓ Exported detailed CSV: {csv_path}")
 
+        # Add per_example_diffs.html if it exists
+        per_example_diffs_path = output_dir / 'per_example_diffs.html'
+        if per_example_diffs_path.exists():
+            generated_files['per_example_diffs'] = per_example_diffs_path
+
         # Generate index HTML
         html_content = self._generate_visualization_index(
             generated_files, df, paper_name)

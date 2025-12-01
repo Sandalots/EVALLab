@@ -147,15 +147,27 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     # Per-example diffs section
     per_example_html = ""
-    if 'per_example_diffs' in files and files['per_example_diffs'].exists():
-        # Embed as iframe for inline viewing, and provide a link
-        per_example_html = (
-            '<div class="viz-section">'
-            '<h2>Per-Example Differences</h2>'
-            f'<iframe src="{files["per_example_diffs"].name}" style="width:100%;height:300px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
-            f'<div style="margin-top:8px;"><a href="{files["per_example_diffs"].name}" target="_blank">Open per-example diffs in new tab</a></div>'
-            '</div>'
-        )
+    per_example_exists = 'per_example_diffs' in files and files['per_example_diffs'].exists()
+    is_empty = True
+    if per_example_exists:
+        try:
+            with open(files['per_example_diffs'], 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            is_empty = (not content) or (content.count('<tr') <= 1)
+        except Exception as e:
+            content = ''
+            is_empty = True
+    per_example_html = '<div class="viz-section">'
+    per_example_html += '<h2>Per-Example Diffs</h2>'
+    if per_example_exists:
+        per_example_html += f'<iframe src="{files["per_example_diffs"].name}" style="width:100%;height:300px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
+        per_example_html += f'<div style="margin-top:8px;"><a href="{files["per_example_diffs"].name}" target="_blank">Open per-example diffs in new tab</a></div>'
+        # Only show warning if the file is truly empty (no <tr> at all or only header)
+        if is_empty:
+            per_example_html += "<div style='color:#e67e22;margin-top:8px;'><b>Warning:</b> Per-example diffs file is present but contains no diffs. This may indicate all examples matched or a comparison issue.</div>"
+    else:
+        per_example_html += "<div style='color:#e67e22;margin-top:8px;'><b>Warning:</b> Per-example diffs file is missing. No per-example comparison was generated.</div>"
+    per_example_html += '</div>'
 
     # Metrics Table (color-coded)
     table_html = ""
