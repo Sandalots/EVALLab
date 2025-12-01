@@ -735,10 +735,47 @@ class ReproductionAgent:
             reproduced_log = self._load_per_example_results(reproduced_log_path)
             per_example_diffs = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log)
             logger.info(f"✓ Compared per-example results: {len(per_example_diffs)} mismatches found.")
-            # Save as HTML and CSV
-            html = self.result_evaluator.generate_per_example_diff_table(per_example_diffs)
+            
+            # Generate diff table
+            diff_html = self.result_evaluator.generate_per_example_diff_table(per_example_diffs)
+            
+            # Generate full tables for baseline and reproduced
+            baseline_table = self.result_evaluator.generate_per_example_table(baseline_log, "Baseline Results")
+            reproduced_table = self.result_evaluator.generate_per_example_table(reproduced_log, "Reproduced Results")
+            
+            # Combine into one HTML file
+            combined_html = f"""
+            <html>
+            <head>
+                <title>Per-Example Comparison</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    h2 {{ color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; }}
+                    table {{ margin: 20px 0; max-width: 100%; overflow-x: auto; }}
+                    .section {{ margin: 30px 0; }}
+                </style>
+            </head>
+            <body>
+                <h1>Per-Example Attack Results Comparison</h1>
+                
+                <div class="section">
+                    <h2>Differences Found: {len(per_example_diffs)}</h2>
+                    {diff_html}
+                </div>
+                
+                <div class="section">
+                    {baseline_table}
+                </div>
+                
+                <div class="section">
+                    {reproduced_table}
+                </div>
+            </body>
+            </html>
+            """
+            
             with open(viz_log_dir / 'per_example_diffs.html', 'w', encoding='utf-8') as f:
-                f.write(html)
+                f.write(combined_html)
             import csv
             if per_example_diffs:
                 with open(viz_log_dir / 'per_example_diffs.csv', 'w', newline='', encoding='utf-8') as f:

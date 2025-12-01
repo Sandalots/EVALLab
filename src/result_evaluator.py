@@ -95,6 +95,44 @@ class ResultEvaluator:
         </table>
         """.format(rows='\n'.join(rows))
 
+    def generate_per_example_table(self, examples, title="Per-Example Results"):
+        """
+        Generate an HTML table showing all per-example results.
+        Args:
+            examples: List of example dicts from log.csv
+            title: Title for the table
+        """
+        if not examples:
+            return "<p>No per-example data available.</p>"
+        
+        # Key fields to display
+        display_fields = ['original_text', 'perturbed_text', 'original_output', 'perturbed_output', 
+                         'ground_truth_output', 'result_type', 'num_queries']
+        
+        html = [f"<h3>{title}</h3>"]
+        html.append("<table border='1' style='border-collapse:collapse; font-size:12px;'>")
+        html.append("<tr>" + ''.join(f"<th style='padding:8px;background:#f0f0f0;'>{h.replace('_', ' ').title()}</th>" 
+                                     for h in display_fields) + "</tr>")
+        
+        for ex in examples:
+            html.append("<tr>")
+            for field in display_fields:
+                val = ex.get(field, '')
+                # Truncate long text
+                if isinstance(val, str) and len(val) > 100:
+                    val = val[:97] + '...'
+                # Color code result_type
+                if field == 'result_type':
+                    color = '#d4edda' if val == 'Successful' else '#f8d7da'
+                    html.append(f"<td style='padding:8px;background:{color};'>{val}</td>")
+                else:
+                    html.append(f"<td style='padding:8px;'>{val}</td>")
+            html.append("</tr>")
+        
+        html.append("</table>")
+        html.append(f"<p style='margin-top:8px;color:#666;'>Total examples: {len(examples)}</p>")
+        return '\n'.join(html)
+    
     def generate_per_example_diff_table(self, diffs):
         """
         Generate an HTML table for per-example prediction diffs.
