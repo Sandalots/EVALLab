@@ -145,6 +145,18 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
             img_path = files[key].name
             viz_html += f'<div class="viz-section"><h3>{caption}</h3><img src="{img_path}" style="max-width:90%;margin:20px 0;box-shadow:0 2px 8px #ccc;border-radius:8px;"></div>'
 
+    # Per-example diffs section
+    per_example_html = ""
+    if 'per_example_diffs' in files and files['per_example_diffs'].exists():
+        # Embed as iframe for inline viewing, and provide a link
+        per_example_html = (
+            '<div class="viz-section">'
+            '<h2>Per-Example Differences</h2>'
+            f'<iframe src="{files["per_example_diffs"].name}" style="width:100%;height:300px;border:1px solid #ccc;border-radius:8px;background:white;"></iframe>'
+            f'<div style="margin-top:8px;"><a href="{files["per_example_diffs"].name}" target="_blank">Open per-example diffs in new tab</a></div>'
+            '</div>'
+        )
+
     # Metrics Table (color-coded)
     table_html = ""
     if df is not None and not df.empty:
@@ -207,6 +219,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         <h2>Research Paper: {paper_name}</h2>
         {metrics_html}
         {viz_html}
+        {per_example_html}
         {table_html}
         {log_html}
         {footer_html}

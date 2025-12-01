@@ -701,27 +701,24 @@ class ReproductionAgent:
         logger.info(f"✓ Generated {len(comparisons)} metric comparisons")
 
         # --- Per-example diff integration ---
-        # Always use papers/codebases/TextAttack/log.csv as the canonical per-example log
         import shutil
         baseline_log_path = Path('papers/codebases/TextAttack/log.csv')
+        reproduced_log_path = Path('outputs/visualizations/textattack/log.csv')
         viz_log_dir = Path('outputs') / 'visualizations' / 'textattack'
         viz_log_dir.mkdir(parents=True, exist_ok=True)
-        viz_log_path = viz_log_dir / 'log.csv'
-        # Only proceed if the canonical log.csv exists and is non-empty
+        # Copy baseline log to visualization dir for UI and diffing (optional)
         if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0:
-            # Copy to visualization directory for UI and diffing
-            shutil.copy2(baseline_log_path, viz_log_path)
-            logger.info(f"✓ Copied {baseline_log_path} to {viz_log_path} for visualization and per-example diff.")
-            # Load both as baseline and reproduced (since this is the only available per-example log)
+            shutil.copy2(baseline_log_path, viz_log_dir / 'baseline_log.csv')
+        # Only proceed if both baseline and reproduced per-example logs exist and are non-empty
+        if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0 and reproduced_log_path.exists() and reproduced_log_path.stat().st_size > 0:
             baseline_log = self._load_per_example_results(baseline_log_path)
-            reproduced_log = self._load_per_example_results(baseline_log_path)
+            reproduced_log = self._load_per_example_results(reproduced_log_path)
             per_example_diffs = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log)
             logger.info(f"✓ Compared per-example results: {len(per_example_diffs)} mismatches found.")
             # Save as HTML and CSV
             html = self.result_evaluator.generate_per_example_diff_table(per_example_diffs)
             with open(viz_log_dir / 'per_example_diffs.html', 'w', encoding='utf-8') as f:
                 f.write(html)
-            # Save as CSV
             import csv
             if per_example_diffs:
                 with open(viz_log_dir / 'per_example_diffs.csv', 'w', newline='', encoding='utf-8') as f:
@@ -730,7 +727,7 @@ class ReproductionAgent:
                     writer.writerows(per_example_diffs)
             logger.info(f"✓ Per-example diffs saved to {viz_log_dir / 'per_example_diffs.html'} and .csv")
         else:
-            logger.info("Per-example log.csv not found or empty; skipping per-example diff.")
+            logger.info("Per-example baseline or reproduced log.csv not found or empty; skipping per-example diff.")
 
         # Generate comprehensive report
         report = self.result_evaluator.generate_report(comparisons)
