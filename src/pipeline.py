@@ -818,8 +818,15 @@ class ReproductionAgent:
         print("\033[93m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
+        # Calculate per-example counts for summary stats
+        per_example_total_stats = max(len(baseline_log), len(reproduced_log)) if baseline_log and reproduced_log else 0
+        per_example_diffs_stats = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log) if baseline_log and reproduced_log else []
+        per_example_matches_stats = per_example_total_stats - len(per_example_diffs_stats) if per_example_total_stats > 0 else 0
+
         summary_stats = self.result_evaluator.generate_summary_statistics(
-            comparisons)
+            comparisons,
+            per_example_total=per_example_total_stats,
+            per_example_matches=per_example_matches_stats)
         logger.info(summary_stats)
 
         # Get LLM analysis of differences

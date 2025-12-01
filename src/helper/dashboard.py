@@ -181,7 +181,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     per_example_html = ""
     metrics_iframe_html = ""
     paper_name_lower = str(paper_name).lower()
-    skip_per_example = ('decontextualisation' in paper_name_lower or 'decontextualization' in paper_name_lower)
+    skip_per_example = ('decontextualisation' in paper_name_lower or 'decontextualization' in paper_name_lower or 'one' in paper_name_lower)
 
     if not skip_per_example:
         # Diffs iframe (if present)

@@ -1057,12 +1057,16 @@ Provide a concise analysis (3-4 paragraphs)."""
             logger.error(f"Failed to generate LLM analysis: {e}")
             return f"LLM analysis failed: {str(e)}"
 
-    def generate_summary_statistics(self, comparisons: List[ComparisonResult]) -> str:
+    def generate_summary_statistics(self, comparisons: List[ComparisonResult],
+                                        per_example_total: int = 0,
+                                        per_example_matches: int = 0) -> str:
         """
         Generate summary statistics grouped by models and configurations.
 
         Args:
             comparisons: List of comparison results
+            per_example_total: Total number of per-example comparisons
+            per_example_matches: Number of per-example matches
 
         Returns:
             Summary statistics string
@@ -1129,6 +1133,30 @@ Provide a concise analysis (3-4 paragraphs)."""
                 f"  {gran:15s}: {passing:3d}/{len(comps):3d} pass  |  "
                 f"avg diff: {avg_diff:6.2f}%"
             )
+
+        # Add per-example statistics if available
+        if per_example_total > 0:
+            lines.append("")
+            lines.append("Per-Example Results:")
+            lines.append("-" * 80)
+            lines.append(f"  Total per-example comparisons: {per_example_total}")
+            lines.append(f"  Per-example matches: {per_example_matches}")
+            lines.append(f"  Per-example mismatches: {per_example_total - per_example_matches}")
+            lines.append(f"  Per-example success rate: {per_example_matches/per_example_total*100:.1f}%")
+
+        # Add combined totals
+        aggregate_total = len(comparisons)
+        aggregate_passing = sum(1 for c in comparisons if c.within_threshold)
+        combined_total = aggregate_total + per_example_total
+        combined_passing = aggregate_passing + per_example_matches
+        
+        lines.append("")
+        lines.append("Combined Totals (Aggregate + Per-Example):")
+        lines.append("-" * 80)
+        lines.append(f"  Aggregate metrics: {aggregate_passing}/{aggregate_total} pass ({aggregate_passing/aggregate_total*100:.1f}%)")
+        if per_example_total > 0:
+            lines.append(f"  Per-example: {per_example_matches}/{per_example_total} pass ({per_example_matches/per_example_total*100:.1f}%)")
+        lines.append(f"  TOTAL: {combined_passing}/{combined_total} pass ({combined_passing/combined_total*100:.1f}%)")
 
         lines.append("")
         lines.append("="*80)
