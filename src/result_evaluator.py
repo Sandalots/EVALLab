@@ -180,8 +180,25 @@ class ResultEvaluator:
         return metrics
 
     def load_paper_metrics(self, codebase_path: Path) -> dict:
-        """Load ground truth metrics extracted from the paper (paper_metrics.json), searching both experiment and codebase directories. Fallback to complete_results.json if not found."""
+        """Load ground truth metrics extracted from the paper (paper_metrics.json), searching both experiment and codebase directories. Fallback to complete_results.json if not found.
+
+        Preference order:
+          1. papers/codebases/<Repo>/paper_metrics.json (explicit TextAttack path check)
+          2. codebase_path/paper_metrics.json
+          3. Recursive search under nearest 'papers' or 'codebases' dirs
+          4. codebase_path/complete_results.json (fallback)
+        """
         import os
+        # 0. Explicit TextAttack repo path preference
+        explicit_textattack = Path('papers/codebases/TextAttack/paper_metrics.json')
+        logger.debug(f"[DEBUG] Checking explicit TextAttack baseline at: {explicit_textattack}")
+        if explicit_textattack.exists():
+            try:
+                with open(explicit_textattack, 'r') as f:
+                    logger.info(f"✓ Using paper_metrics.json as baseline (explicit path): {explicit_textattack}")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load paper_metrics.json from explicit TextAttack path: {e}")
         # 1. Check for paper_metrics.json in experiment directory
         paper_metrics_path = codebase_path / 'paper_metrics.json'
         logger.debug(f"[DEBUG] Checking for paper_metrics.json in experiment directory: {paper_metrics_path}")
