@@ -580,37 +580,26 @@ class ReproductionAgent:
         if not codebase_path:
             print("\n" + "="*80)
             print("\033[91m┌" + "─"*78 + "┐\033[0m")
-            print("\033[91m│\033[0m" +
-                "\033[1;91m ❌ NO CODEBASE FOUND".center(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + "\033[1;91m ❌ NO CODEBASE FOUND".center(78) + "\033[91m│\033[0m")
             print("\033[91m├" + "─"*78 + "┤\033[0m")
-            print("\033[91m│\033[0m" +
-                " Unable to find experiment code from any source.".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + " Unable to find experiment code from any source.".ljust(78) + "\033[91m│\033[0m")
             print("\033[91m│\033[0m" + " ".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" +
-                " 💡 SOLUTION: Manually add codebase to ./papers/codebases/".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + " 💡 SOLUTION: Manually add codebase to ./papers/codebases/".ljust(78) + "\033[91m│\033[0m")
             print("\033[91m│\033[0m" + " ".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" +
-                "   Steps:".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" +
-                "   1. Create ./papers/codebases/ directory if it doesn't exist".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" +
-                "   2. Place your experiment codebase inside it".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" +
-                "   3. Run the agent again".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + "   Steps:".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + "   1. Create ./papers/codebases/ directory if it doesn't exist".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + "   2. Place your experiment codebase inside it".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + "   3. Run the agent again".ljust(78) + "\033[91m│\033[0m")
             print("\033[91m│\033[0m" + " ".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" +
-                " Checked:".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + " Checked:".ljust(78) + "\033[91m│\033[0m")
             if local_path:
-                print(
-                  "\033[91m│\033[0m" + f"   ✗ User path: {local_path}".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" +
-                "   ✗ Local directory: ./papers/codebases/".ljust(78) + "\033[91m│\033[0m")
+                print("\033[91m│\033[0m" + f"   ✗ User path: {local_path}".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + "   ✗ Local directory: ./papers/codebases/".ljust(78) + "\033[91m│\033[0m")
             if paper_content.github_urls:
-                print("\033[91m│\033[0m" + f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(
-                  78) + "\033[91m│\033[0m")
+                print("\033[91m│\033[0m" + f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(78) + "\033[91m│\033[0m")
             else:
-                print(
-                    "\033[91m│\033[0m" + "   ✗ GitHub URLs: None found in paper".ljust(78) + "\033[91m│\033[0m")
+                print("\033[91m│\033[0m" + "   ✗ GitHub URLs: None found in paper".ljust(78) + "\033[91m│\033[0m")
+                
             print("\033[91m└" + "─"*78 + "┘\033[0m")
             print("="*80 + "\n")
             logger.error("No codebase available!")
