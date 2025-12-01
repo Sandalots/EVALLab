@@ -636,23 +636,24 @@ class ExperimentExecutor:
 
 
 
+        # Pytest installation disabled - not needed for paper reproducibility testing
         # Always install pytest in the venv after requirements
-        logger.info("Ensuring pytest is installed in venv...")
-        try:
-            result = subprocess.run(
-                [str(python_executable), '-m', 'pip', 'install', 'pytest'],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-            logger.info("✓ Installed pytest in venv")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"✗ Failed to install pytest in venv: {e.stderr}")
-            return False
-        except subprocess.TimeoutExpired:
-            logger.error(f"✗ Timeout installing pytest in venv after 5 minutes")
-            return False
+        # logger.info("Ensuring pytest is installed in venv...")
+        # try:
+        #     result = subprocess.run(
+        #         [str(python_executable), '-m', 'pip', 'install', 'pytest'],
+        #         check=True,
+        #         capture_output=True,
+        #         text=True,
+        #         timeout=300
+        #     )
+        #     logger.info("✓ Installed pytest in venv")
+        # except subprocess.CalledProcessError as e:
+        #     logger.error(f"✗ Failed to install pytest in venv: {e.stderr}")
+        #     return False
+        # except subprocess.TimeoutExpired:
+        #     logger.error(f"✗ Timeout installing pytest in venv after 5 minutes")
+        #     return False
 
         # Ensure optional modules for AIX360 tests when running one.pdf
         # Specifically, some matching tests require 'otoc'. Try to install if missing.

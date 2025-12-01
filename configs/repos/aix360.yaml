@@ -13,12 +13,13 @@ dependencies:
 pre_run_setup: []  # pandas imports already patched in repo files
 
 experiments:
-  - name: "boolean_rule_test"
-    type: "pytest"
-    path: "tests/rbm/test_Boolean_Rule_CG.py"
-    args: ["-v"]
-    timeout: 120
-    description: "Run Boolean Rule Column Generation test"
+  # Pytest tests disabled - they test codebase unit tests, not paper reproducibility
+  # - name: "boolean_rule_test"
+  #   type: "pytest"
+  #   path: "tests/rbm/test_Boolean_Rule_CG.py"
+  #   args: ["-v"]
+  #   timeout: 120
+  #   description: "Run Boolean Rule Column Generation test"
   
   - name: "rbm_metrics"
     type: "python_script"
@@ -96,26 +97,27 @@ experiments:
     timeout: 60
     description: "Extract performance metrics from RBM model"
   
-  - name: "lime_test"
-    type: "pytest"
-    path: "tests/lime/test_lime.py::TestLIMEExplainer::test_LIME"
-    args: ["-v", "-s"]
-    timeout: 180
-    description: "Run LIME explainer test on iris dataset"
-  
-  - name: "shap_test"
-    type: "pytest"
-    path: "tests/shap/test_shap.py::TestShapExplainer::test_Shap"
-    args: ["-v", "-s"]
-    timeout: 180
-    description: "Run SHAP explainer test on iris dataset"
-  
-  - name: "logistic_rule_test"
-    type: "pytest"
-    path: "tests/rbm/test_Logistic_Rule_Regression.py"
-    args: ["-v"]
-    timeout: 180
-    description: "Run Logistic Rule Regression test on breast cancer dataset"
+  # Pytest tests disabled - they test codebase unit tests, not paper reproducibility
+  # - name: "lime_test"
+  #   type: "pytest"
+  #   path: "tests/lime/test_lime.py::TestLIMEExplainer::test_LIME"
+  #   args: ["-v", "-s"]
+  #   timeout: 180
+  #   description: "Run LIME explainer test on iris dataset"
+  # 
+  # - name: "shap_test"
+  #   type: "pytest"
+  #   path: "tests/shap/test_shap.py::TestShapExplainer::test_Shap"
+  #   args: ["-v", "-s"]
+  #   timeout: 180
+  #   description: "Run SHAP explainer test on iris dataset"
+  # 
+  # - name: "logistic_rule_test"
+  #   type: "pytest"
+  #   path: "tests/rbm/test_Logistic_Rule_Regression.py"
+  #   args: ["-v"]
+  #   timeout: 180
+  #   description: "Run Logistic Rule Regression test on breast cancer dataset"
 
 baseline:
   strategy: "double_run"

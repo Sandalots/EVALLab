@@ -27,26 +27,27 @@ experiments:
     timeout: 600
     description: "Run TextFooler attack on RoBERTa SST-2 model"
   
-  - name: "word_embedding_test"
-    type: "pytest"
-    path: "tests/test_word_embedding.py"
-    args: ["-v", "-s"]
-    timeout: 180
-    description: "Run word embedding tests (GloVe, Gensim)"
-  
-  - name: "transformations_test"
-    type: "pytest"
-    path: "tests/test_transformations.py::test_word_swap_change_location"
-    args: ["-v", "-s"]
-    timeout: 180
-    description: "Run word transformation tests"
-  
-  - name: "augmentation_test"
-    type: "pytest"
-    path: "tests/test_augment_api.py"
-    args: ["-v", "-s", "-k", "test_embedding_augmenter"]
-    timeout: 180
-    description: "Run data augmentation API tests"
+  # Pytest tests disabled - they test codebase unit tests, not paper reproducibility
+  # - name: "word_embedding_test"
+  #   type: "pytest"
+  #   path: "tests/test_word_embedding.py"
+  #   args: ["-v", "-s"]
+  #   timeout: 180
+  #   description: "Run word embedding tests (GloVe, Gensim)"
+  # 
+  # - name: "transformations_test"
+  #   type: "pytest"
+  #   path: "tests/test_transformations.py::test_word_swap_change_location"
+  #   args: ["-v", "-s"]
+  #   timeout: 180
+  #   description: "Run word transformation tests"
+  # 
+  # - name: "augmentation_test"
+  #   type: "pytest"
+  #   path: "tests/test_augment_api.py"
+  #   args: ["-v", "-s", "-k", "test_embedding_augmenter"]
+  #   timeout: 180
+  #   description: "Run data augmentation API tests"
 
 baseline:
   strategy: "double_run"
