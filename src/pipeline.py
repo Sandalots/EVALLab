@@ -729,8 +729,15 @@ class ReproductionAgent:
         # Copy baseline log to visualization dir for UI and diffing (optional)
         if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0:
             shutil.copy2(baseline_log_path, viz_log_dir / 'baseline_log.csv')
+
+        # Decide whether to skip per-example comparison (e.g., for decontextualisation paper)
+        current_paper_name = str(paper_path.stem).lower() if paper_path else ""
+        skip_per_example = "decontextual" in current_paper_name
+        if skip_per_example:
+            logger.info("Skipping per-example comparison for decontextualisation paper as requested.")
+
         # Only proceed if both baseline and reproduced per-example logs exist and are non-empty
-        if baseline_log_path.exists() and baseline_log_path.stat().st_size > 0 and reproduced_log_path.exists() and reproduced_log_path.stat().st_size > 0:
+        if (not skip_per_example) and baseline_log_path.exists() and baseline_log_path.stat().st_size > 0 and reproduced_log_path.exists() and reproduced_log_path.stat().st_size > 0:
             baseline_log = self._load_per_example_results(baseline_log_path)
             reproduced_log = self._load_per_example_results(reproduced_log_path)
             per_example_diffs = self.result_evaluator.compare_per_example_results(baseline_log, reproduced_log)

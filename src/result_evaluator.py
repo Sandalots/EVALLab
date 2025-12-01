@@ -893,10 +893,15 @@ JSON:"""
 
         best_configs = {}
         for comp in comparisons:
+            # Only aggregate numeric percent differences
+            try:
+                pct = float(comp.percent_difference)
+            except (TypeError, ValueError):
+                continue
             config = '/'.join(comp.configuration.split('/')[1:4])
             if config not in best_configs:
                 best_configs[config] = []
-            best_configs[config].append(abs(comp.percent_difference))
+            best_configs[config].append(abs(pct))
 
         # Average percent difference per config
         config_scores = {
@@ -931,8 +936,12 @@ JSON:"""
 
         # Sample some interesting comparisons
         sample_size = min(10, len(comparisons))
-        sample = sorted(comparisons, key=lambda x: abs(
-            x.percent_difference))[:sample_size]
+        def _safe_abs_pct(c):
+            try:
+                return abs(float(c.percent_difference))
+            except (TypeError, ValueError):
+                return float('inf')
+        sample = sorted(comparisons, key=_safe_abs_pct)[:sample_size]
 
         # Build comparison summary for LLM
         summary = "Reproduction results across multiple configurations:\n\n"
@@ -950,7 +959,11 @@ JSON:"""
             for comp in comps[:5]:
                 config = '/'.join(comp.configuration.split('/')[1:3])
                 summary += f"  - {config}/{comp.metric_name}: baseline={comp.baseline_value:.4f}, "
-                summary += f"reproduced={comp.reproduced_value:.4f} ({comp.percent_difference:+.2f}%)\n"
+                try:
+                    pct = float(comp.percent_difference)
+                    summary += f"reproduced={comp.reproduced_value:.4f} ({pct:+.2f}%)\n"
+                except (TypeError, ValueError):
+                    summary += f"reproduced={comp.reproduced_value:.4f} (N/A)\n"
 
         system_prompt = """You are an expert in machine learning research and experiment reproduction.
 Analyze the differences between baseline and reproduced results across multiple experimental configurations."""
@@ -1013,8 +1026,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("-" * 80)
         for model, comps in sorted(by_model.items()):
             passing = sum(1 for c in comps if c.within_threshold)
-            avg_diff = sum(abs(c.percent_difference)
-                           for c in comps) / len(comps)
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_diff = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0.0
             lines.append(
                 f"  {model:15s}: {passing:3d}/{len(comps):3d} pass  |  "
                 f"avg diff: {avg_diff:6.2f}%"
@@ -1035,8 +1053,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("-" * 80)
         for gran, comps in sorted(by_granularity.items()):
             passing = sum(1 for c in comps if c.within_threshold)
-            avg_diff = sum(abs(c.percent_difference)
-                           for c in comps) / len(comps)
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_diff = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0.0
             lines.append(
                 f"  {gran:15s}: {passing:3d}/{len(comps):3d} pass  |  "
                 f"avg diff: {avg_diff:6.2f}%"
@@ -1121,8 +1144,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         for gran, comps in sorted(by_granularity.items()):
             passing_count = sum(1 for c in comps if c.within_threshold)
             gran_rate = (passing_count / len(comps) * 100) if comps else 0
-            avg_deviation = sum(abs(c.percent_difference)
-                                for c in comps) / len(comps) if comps else 0
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_deviation = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0
 
             lines.append(f"\n{gran.upper()} Granularity:")
             lines.append(
@@ -1145,8 +1173,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         for exp, comps in sorted(by_exp.items()):
             passing_count = sum(1 for c in comps if c.within_threshold)
             exp_rate = (passing_count / len(comps) * 100) if comps else 0
-            avg_deviation = sum(abs(c.percent_difference)
-                                for c in comps) / len(comps) if comps else 0
+            numeric_pcts = []
+            for c in comps:
+                try:
+                    numeric_pcts.append(abs(float(c.percent_difference)))
+                except (TypeError, ValueError):
+                    continue
+            avg_deviation = (sum(numeric_pcts) / len(numeric_pcts)) if numeric_pcts else 0
 
             lines.append(f"\n{exp}:")
             lines.append(
@@ -1164,22 +1197,36 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("-" * 80)
 
         # Find worst performing metrics
-        worst_metrics = sorted(comparisons, key=lambda x: abs(
-            x.percent_difference), reverse=True)[:5]
+        def _safe_abs_pct_worst(x):
+            try:
+                return abs(float(x.percent_difference))
+            except (TypeError, ValueError):
+                return -float('inf')
+        worst_metrics = sorted(comparisons, key=_safe_abs_pct_worst, reverse=True)[:5]
 
         lines.append("\nTop Issues Identified:")
         for i, comp in enumerate(worst_metrics, 1):
             config_short = '/'.join(comp.configuration.split('/')[1:4])
-            lines.append(
-                f"  {i}. {comp.metric_name} in {config_short}: "
-                f"{comp.percent_difference:+.2f}% deviation"
-            )
+            try:
+                pct = float(comp.percent_difference)
+                lines.append(
+                    f"  {i}. {comp.metric_name} in {config_short}: "
+                    f"{pct:+.2f}% deviation"
+                )
+            except (TypeError, ValueError):
+                lines.append(
+                    f"  {i}. {comp.metric_name} in {config_short}: N/A deviation"
+                )
 
         lines.append("\nPossible Root Causes:")
 
         # Analyze patterns
-        high_deviation_count = sum(
-            1 for c in comparisons if abs(c.percent_difference) > 50)
+        def _is_high_dev(c):
+            try:
+                return abs(float(c.percent_difference)) > 50
+            except (TypeError, ValueError):
+                return False
+        high_deviation_count = sum(1 for c in comparisons if _is_high_dev(c))
         if high_deviation_count > total * 0.3:  # More than 30% have >50% deviation
             lines.append("  • DATA MISMATCH: Many metrics show >50% deviation")
             lines.append(
@@ -1233,10 +1280,14 @@ Provide a concise analysis (3-4 paragraphs)."""
         # Best performing configurations
         best_configs = {}
         for comp in comparisons:
+            try:
+                pct = abs(float(comp.percent_difference))
+            except (TypeError, ValueError):
+                continue
             config = '/'.join(comp.configuration.split('/')[1:4])
             if config not in best_configs:
                 best_configs[config] = []
-            best_configs[config].append(abs(comp.percent_difference))
+            best_configs[config].append(pct)
 
         config_scores = {k: sum(v) / len(v) for k, v in best_configs.items()}
         top_configs = sorted(config_scores.items(), key=lambda x: x[1])[:3]
