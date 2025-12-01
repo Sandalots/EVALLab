@@ -434,22 +434,23 @@ class ResultEvaluator:
         count_recursive(results)
         return count
 
-    def extract_all_metrics_from_experiments(self, experiment_sets: List[ExperimentSet]) -> Dict[str, Dict[str, float]]:
-        """
-        Extract all metrics from all experiment sets, organized by configuration.
+    def extract_all_metrics_from_experiments(self, experiment_sets: List[ExperimentSet]) -> Dict[str, float]:
+        """Extract all metrics from all experiment sets.
+
         Args:
-            experiment_sets: List of experiment results
+            experiment_sets: List of experiment result containers
+
         Returns:
-            Dict mapping "experiment_set/config/model/metric" to value
+            Flat dict mapping "experiment_set/config/model/metric" to value.
         """
-        all_metrics = {}
+        flat_metrics = {}
         for exp_set in experiment_sets:
             metrics = self._extract_metrics_from_nested_dict(
                 exp_set.results,
                 prefix=exp_set.name
             )
-            all_metrics[exp_set.name] = metrics
-        return all_metrics
+            flat_metrics.update(metrics)
+        return flat_metrics
 
     def compare_to_paper_metrics(self, codebase_path: Path, experiment_sets: List[ExperimentSet]) -> list:
         """Compare all reproduced metrics to paper metrics and return a list of diffs."""
