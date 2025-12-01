@@ -180,16 +180,17 @@ class ResultEvaluator:
         return metrics
 
     def load_paper_metrics(self, codebase_path: Path) -> dict:
-        """Load ground truth metrics extracted from the paper (paper_metrics.json), searching both experiment and codebase directories. Fallback to complete_results.json if not found.
+        """Load ground truth metrics extracted from the paper (paper_metrics.json) or authors' baseline (complete_results.json from outputs_all_methods_oracle).
 
         Preference order:
-          1. papers/codebases/<Repo>/paper_metrics.json (explicit TextAttack path check)
-          2. codebase_path/paper_metrics.json
-          3. Recursive search under nearest 'papers' or 'codebases' dirs
-          4. codebase_path/complete_results.json (fallback)
+          1. codebase_path/paper_metrics.json (manual baseline)
+          2. codebase_path/outputs_all_methods_oracle/complete_results.json (authors' baseline for decontextualization)
+          3. codebase_path/outputs_all_methods/complete_results.json (fallback)
+          4. Recursive search under nearest 'papers' or 'codebases' dirs
         """
         import os
-        # Check for paper_metrics.json in experiment directory
+        
+        # 1. Check for paper_metrics.json in experiment directory (manual baseline)
         paper_metrics_path = codebase_path / 'paper_metrics.json'
         logger.debug(f"[DEBUG] Checking for paper_metrics.json in experiment directory: {paper_metrics_path}")
         if paper_metrics_path.exists():
@@ -200,8 +201,29 @@ class ResultEvaluator:
             except Exception as e:
                 logger.error(f"Failed to load paper_metrics.json from experiment directory: {e}")
 
-        # 2. Check for paper_metrics.json in codebase directory (e.g., papers/codebases/TextAttack/paper_metrics.json)
-        # Look for a 'codebases' or 'papers' directory in the parent tree
+        # 2. Check for authors' baseline in outputs_all_methods_oracle/complete_results.json
+        oracle_baseline_path = codebase_path / 'outputs_all_methods_oracle' / 'complete_results.json'
+        logger.debug(f"[DEBUG] Checking for authors' baseline at: {oracle_baseline_path}")
+        if oracle_baseline_path.exists():
+            try:
+                with open(oracle_baseline_path, 'r') as f:
+                    logger.info(f"✓ Using authors' baseline from outputs_all_methods_oracle/complete_results.json")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load authors' baseline from {oracle_baseline_path}: {e}")
+
+        # 3. Check for outputs_all_methods/complete_results.json
+        methods_baseline_path = codebase_path / 'outputs_all_methods' / 'complete_results.json'
+        logger.debug(f"[DEBUG] Checking for baseline at: {methods_baseline_path}")
+        if methods_baseline_path.exists():
+            try:
+                with open(methods_baseline_path, 'r') as f:
+                    logger.info(f"✓ Using baseline from outputs_all_methods/complete_results.json")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load baseline from {methods_baseline_path}: {e}")
+
+        # 4. Recursive search under nearest 'papers' or 'codebases' dirs
         current = codebase_path
         found = False
         for level in range(5):  # Search up to 5 levels up
