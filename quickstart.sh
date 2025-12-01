@@ -1,5 +1,6 @@
 #!/bin/bash
-# Quick start script for EVALLab
+
+# Quick start script for setting up EVALLab and running it on the sample Decontextualization research paper.
 set -e
 
 # Create venv if it doesn't exist in parent directory
