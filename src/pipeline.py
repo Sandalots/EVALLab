@@ -672,11 +672,22 @@ class ReproductionAgent:
             
             # Save first run as baseline
             reproduced_log_source = codebase_info.path / 'log.csv'
+            reproduced_results_source = codebase_info.path / 'complete_results.json'
+            baseline_dir.mkdir(parents=True, exist_ok=True)
+            import shutil
+            
+            # Save log.csv as baseline if it exists
             if reproduced_log_source.exists():
-                baseline_dir.mkdir(parents=True, exist_ok=True)
-                import shutil
                 shutil.copy2(reproduced_log_source, baseline_log_path)
-                logger.info(f"  ✓ Baseline established at {baseline_log_path}")
+                logger.info(f"  ✓ Baseline log.csv saved at {baseline_log_path}")
+            
+            # Save complete_results.json as paper_metrics.json (baseline)
+            if reproduced_results_source.exists():
+                paper_metrics_path = codebase_info.path / 'paper_metrics.json'
+                shutil.copy2(reproduced_results_source, paper_metrics_path)
+                logger.info(f"  ✓ Baseline metrics saved at {paper_metrics_path}")
+            else:
+                logger.warning("  ⚠ No complete_results.json found to save as baseline")
             
             # Second run: for comparison
             logger.info("  → Run 2/2: Running comparison experiment...")
