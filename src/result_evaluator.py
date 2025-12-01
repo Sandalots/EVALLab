@@ -713,52 +713,42 @@ JSON:"""
     def _normalize_metric_key(self, key: str) -> str:
         """
         Normalize metric key for robust comparison.
-        - Lowercase
-        - Replace dashes with underscores
-        - Remove redundant slashes
-        - Replace @ with _at_
-        - Remove spaces
-        - Remove trailing/leading slashes
-        - Collapse multiple underscores
-        - Collapse repeated 'root/' prefixes to a single 'root/'
-        - Strip stray ANSI color artifacts (e.g., '92m')
-        - Collapse consecutive duplicate path segments (e.g., 'a/a/x' -> 'a/x')
+        Fast path for common cases, comprehensive cleanup for edge cases.
         """
         import re
-        # Lowercase and basic normalization
+        
+        # Fast path: check if key needs normalization
+        if key and key.islower() and '  ' not in key and '--' not in key and '//' not in key:
+            # Already normalized, just handle @ symbol and trailing slash
+            return key.replace('@', '_at_').strip('/')
+        
+        # Comprehensive normalization for complex cases
+        # Lowercase and basic replacements
         key = key.lower().replace('-', '_').replace(' ', '').replace('@', '_at_')
-
-        # Remove ANSI escape sequences if present
-        key = re.sub(r"\x1b\[[0-9;]*m", "", key)
-        # Remove orphaned color suffix fragments like '92m', '39m', etc.
-        key = re.sub(r"\d{1,3}m", "", key)
-
-        # Normalize slashes and underscores
-        key = re.sub(r'/+', '/', key)
-        key = re.sub(r'_+', '_', key)
-        # Collapse any sequence of two or more 'root/' at the start to a single 'root/'
-        key = re.sub(r'^(root/)+', 'root/', key)
-        key = key.strip('/')
-
-        # Collapse consecutive duplicate path segments (handles cases like 'outputs_all_methods/outputs_all_methods/...')
-        parts = [p for p in key.split('/') if p]
-        dedup_parts = []
-        for p in parts:
-            if not dedup_parts or dedup_parts[-1] != p:
-                dedup_parts.append(p)
-        key = '/'.join(dedup_parts)
-        return key
+        
+        # Remove ANSI sequences (rare, but handle once)
+        if '\x1b' in key or any(c.isdigit() for c in key[-3:]):
+            key = re.sub(r"\x1b\[[0-9;]*m", "", key)
+            key = re.sub(r"\d{1,3}m", "", key)
+        
+        # Collapse repeated characters
+        key = re.sub(r'/+', '/', key).replace('__', '_')
+        key = re.sub(r'^(root/)+', 'root/', key).strip('/')
+        
+        # Deduplicate consecutive path segments
+        parts = [p for i, p in enumerate(key.split('/')) if p and (i == 0 or p != key.split('/')[i-1])]
+        return '/'.join(parts)
 
     def _flatten_dict(self, d, parent_key="", sep="/"):
-        """Recursively flattens a nested dictionary."""
-        items = []
+        """Recursively flattens a nested dictionary. Optimized with generator."""
+        items = {}
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
             if isinstance(v, dict):
-                items.extend(self._flatten_dict(v, new_key, sep=sep).items())
+                items.update(self._flatten_dict(v, new_key, sep))
             else:
-                items.append((new_key, v))
-        return dict(items)
+                items[new_key] = v
+        return items
 
 
     def compare_results(self, baseline: BaselineMetrics,
@@ -766,40 +756,43 @@ JSON:"""
         """
         Compare reproduced results to baseline metrics.
         Only compares metrics that exist in the baseline.
+        Optimized: pre-normalize all keys once, avoid redundant processing.
         """
         comparisons = []
 
         # Flatten nested dicts in reproduced metrics (if any)
         flat_reproduced = self._flatten_dict(reproduced) if any(isinstance(v, dict) for v in reproduced.values()) else reproduced
 
-        # Normalize all keys in both baseline and reproduced dicts
-        # For duplicates after normalization, prefer entries with fewer path segments (shorter keys)
+        # Pre-normalize all keys once (cache normalized versions)
+        # For duplicates after normalization, prefer shorter paths
         norm_baseline = {}
         for k, v in baseline.metrics.items():
             norm_key = self._normalize_metric_key(str(k))
-            if norm_key not in norm_baseline or str(k).count('/') < str(norm_baseline[norm_key][0]).count('/'):
-                norm_baseline[norm_key] = (k, v)
+            if norm_key not in norm_baseline:
+                norm_baseline[norm_key] = (k, v, str(k).count('/'))
+            elif str(k).count('/') < norm_baseline[norm_key][2]:
+                norm_baseline[norm_key] = (k, v, str(k).count('/'))
         
         norm_reproduced = {}
         for k, v in flat_reproduced.items():
             norm_key = self._normalize_metric_key(str(k))
-            # Prefer entries with fewer slashes (e.g., 'root/accuracy' over 'root/root/root/accuracy')
-            if norm_key not in norm_reproduced or str(k).count('/') < str(norm_reproduced[norm_key][0]).count('/'):
-                norm_reproduced[norm_key] = (k, v)
+            if norm_key not in norm_reproduced:
+                norm_reproduced[norm_key] = (k, v, str(k).count('/'))
+            elif str(k).count('/') < norm_reproduced[norm_key][2]:
+                norm_reproduced[norm_key] = (k, v, str(k).count('/'))
 
-        # Log all keys and values for debugging
-        logger.info(f"[DEBUG] Baseline metric keys/values: {list(baseline.metrics.items())}")
-        logger.info(f"[DEBUG] Reproduced metric keys/values: {list(flat_reproduced.items())}")
-        logger.info(f"[DEBUG] Normalized baseline keys: {list(norm_baseline.keys())}")
-        logger.info(f"[DEBUG] Normalized reproduced keys: {list(norm_reproduced.keys())}")
+        # Debug logging (only keys, not values for brevity)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[DEBUG] Normalized baseline keys: {list(norm_baseline.keys())}")
+            logger.debug(f"[DEBUG] Normalized reproduced keys: {list(norm_reproduced.keys())}")
 
         matched_count = 0
         unmatched_baseline = []
 
         # Only compare metrics that exist in the baseline
-        for norm_key, (baseline_key, baseline_value) in norm_baseline.items():
+        for norm_key, (baseline_key, baseline_value, _) in norm_baseline.items():
             if norm_key in norm_reproduced:
-                repro_key, reproduced_value = norm_reproduced[norm_key]
+                _, reproduced_value, _ = norm_reproduced[norm_key]
                 matched_count += 1
 
                 difference = reproduced_value - baseline_value
@@ -809,15 +802,11 @@ JSON:"""
                 else:
                     percent_diff = float('inf') if difference != 0 else 0
 
-                # Use the key itself as configuration if no path structure
-                if '/' in baseline_key:
-                    metric_name = baseline_key.split('/')[-1]
-                    config = baseline_key
-                else:
-                    metric_name = baseline_key
-                    config = baseline_key
+                # Extract metric name and config efficiently
+                metric_name = baseline_key.split('/')[-1] if '/' in baseline_key else baseline_key
+                config = baseline_key
 
-                # Define within_threshold: True if percent_diff is within self.threshold * 100
+                # Define within_threshold
                 within_threshold = abs(percent_diff) <= self.threshold * 100
 
                 comparisons.append(ComparisonResult(
