@@ -5,7 +5,7 @@ set -e
 
 # Create venv if it doesn't exist in parent directory
 if [ ! -d ".venv" ]; then
-  python3 -m venv ../.venv
+  python3 -m venv .venv
 fi
 
 # ollama serve in the background

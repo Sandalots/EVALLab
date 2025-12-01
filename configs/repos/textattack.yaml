@@ -8,6 +8,7 @@ dependencies:
   - "transformers>=4.30.0"
   - "nltk"
   - "tqdm"
+  - "gensim"
 
 pre_run_setup: []  # No special setup needed
 
