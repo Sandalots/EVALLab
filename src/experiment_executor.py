@@ -778,9 +778,10 @@ class ExperimentExecutor:
                 python_cmd = _get_python_executable()
                 self.logger.info(f"[run_experiment] Fallback to system Python: {python_cmd}")
 
-        # Always resolve python_cmd to absolute path if possible
+        # Convert to absolute path if needed, but DON'T resolve symlinks for venv Python
+        # (venv wrappers are symlinks that set up PYTHONPATH correctly)
         if python_cmd and not os.path.isabs(python_cmd):
-            python_cmd = str(Path(python_cmd).resolve())
+            python_cmd = str(Path(python_cmd).absolute())
 
 
 
