@@ -947,17 +947,31 @@ class ExperimentExecutor:
                 r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)",
                 # Pattern for sklearn-style output: "Accuracy: 0.9298" with capital first letter
                 r"(Accuracy|Precision|Recall|F1\s+Score):\s+([0-9\.eE+-]+)",
+                # Pattern for model-prefixed metrics: "KNN Accuracy: 0.9667" or "SVM Precision (macro): 0.9524"
+                r"(KNN|SVM|RF|LR)\s+(Accuracy|Precision|Recall|F1\s+Score)(?:\s+\(macro\))?:\s+([0-9\.eE+-]+)",
             ]
             for line in stdout_lines + stderr_lines:
                 for pat in metric_patterns:
                     m = re.search(pat, line, re.IGNORECASE)
                     if m:
-                        key = m.group(1).lower().replace(' ', '_').replace('-', '_')
-                        try:
-                            val = float(m.group(2))
-                            metrics[key] = val
-                        except Exception:
-                            continue
+                        # Handle model-prefixed metrics (3 groups)
+                        if len(m.groups()) == 3 and m.group(1).upper() in ['KNN', 'SVM', 'RF', 'LR']:
+                            model = m.group(1).lower()
+                            metric = m.group(2).lower().replace(' ', '_').replace('-', '_')
+                            key = f"{model}_{metric}"
+                            try:
+                                val = float(m.group(3))
+                                metrics[key] = val
+                            except Exception:
+                                continue
+                        else:
+                            # Standard metric (2 groups)
+                            key = m.group(1).lower().replace(' ', '_').replace('-', '_')
+                            try:
+                                val = float(m.group(2))
+                                metrics[key] = val
+                            except Exception:
+                                continue
 
             # --- TextAttack summary table parsing ---
             def parse_textattack_summary_table(stdout_lines):
@@ -1119,12 +1133,25 @@ class ExperimentExecutor:
                     outputs['test_details'] = test_details
                     self.logger.info(f"[run_experiment] Captured {len(test_details)} test outcomes for per-example metrics")
 
-            # Write all found metrics to complete_results.json
+            # Write all found metrics to complete_results.json (merge with existing if present)
             try:
-                with open(str(working_dir / 'complete_results.json'), 'w') as f:
-                    _json.dump(metrics, f, indent=2)
-                outputs['complete_results.json'] = metrics
-                self.logger.info(f"[run_experiment] Wrote complete_results.json: {metrics}")
+                results_path = working_dir / 'complete_results.json'
+                existing_metrics = {}
+                if results_path.exists():
+                    try:
+                        with open(str(results_path), 'r') as f:
+                            existing_metrics = _json.load(f)
+                        self.logger.info(f"[run_experiment] Merging with existing complete_results.json ({len(existing_metrics)} existing metrics)")
+                    except Exception as e:
+                        self.logger.warning(f"[run_experiment] Could not read existing complete_results.json: {e}")
+                
+                # Merge new metrics with existing (new metrics take precedence)
+                merged_metrics = {**existing_metrics, **metrics}
+                
+                with open(str(results_path), 'w') as f:
+                    _json.dump(merged_metrics, f, indent=2)
+                outputs['complete_results.json'] = merged_metrics
+                self.logger.info(f"[run_experiment] Wrote complete_results.json: {merged_metrics}")
             except Exception as e:
                 self.logger.error(f"[run_experiment] Failed to write complete_results.json: {e}")
 

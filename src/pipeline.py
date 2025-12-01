@@ -1186,8 +1186,9 @@ class ReproductionAgent:
         results = []
 
 
-        # Special handling: if this is an AIX360 codebase, run the RBM metrics script
+        # Special handling: if this is an AIX360 codebase, run both RBM and SHAP metrics scripts
         if 'aix360' in str(codebase_info.path).lower():
+            # Run RBM metrics script
             rbm_metrics_script = codebase_info.path / 'run_rbm_metrics.py'
             if rbm_metrics_script.exists():
                 logger.info(f"Running AIX360 RBM metrics script: {rbm_metrics_script}")
@@ -1201,9 +1202,27 @@ class ReproductionAgent:
                 result = self.experiment_executor.run_experiment(config)
                 results.append(result)
                 if result.success:
-                    logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
+                    logger.info(f"  ✓ RBM Success (duration: {result.duration:.2f}s)")
                 else:
-                    logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
+                    logger.warning(f"  ✗ RBM Failed: {result.stderr[:200]}")
+            
+            # Run SHAP metrics script
+            shap_metrics_script = codebase_info.path / 'run_shap_metrics.py'
+            if shap_metrics_script.exists():
+                logger.info(f"Running AIX360 SHAP metrics script: {shap_metrics_script}")
+                config = ExperimentConfig(
+                    script_path=shap_metrics_script,
+                    args=[],
+                    env_vars={},
+                    working_dir=codebase_info.path,
+                    timeout=self.config['experiment']['timeout']
+                )
+                result = self.experiment_executor.run_experiment(config)
+                results.append(result)
+                if result.success:
+                    logger.info(f"  ✓ SHAP Success (duration: {result.duration:.2f}s)")
+                else:
+                    logger.warning(f"  ✗ SHAP Failed: {result.stderr[:200]}")
         
         # Special handling: if this is a textattack codebase, run the smaller IMDB LSTM training script
         if 'textattack' in str(codebase_info.path).lower():
