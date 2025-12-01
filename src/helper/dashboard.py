@@ -240,7 +240,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     <!DOCTYPE html>
     <html>
     <head>
-        <title>EVALLab .Reproducibility Analysis - {paper_name}</title>
+        <title>EVALLab Reproducibility Analysis - {paper_name}</title>
         <style>
             body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }}
             h1 {{ color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }}
