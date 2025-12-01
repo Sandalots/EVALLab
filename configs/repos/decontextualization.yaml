@@ -43,7 +43,7 @@ metrics:
       name: "f1_score"
 
 outputs:
-  results_file: "code/complete_results.json"
+  results_file: "code/outputs_all_methods/complete_results.json"
   report_file: "code/outputs_all_methods/report.md"
 
 data_validation:
