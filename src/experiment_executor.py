@@ -1152,15 +1152,22 @@ class ExperimentExecutor:
                 test_fields = {'tests_passed', 'tests_failed', 'tests_errored', 'tests_skipped', 
                               'success', 'test_details', 'duration'}
                 
-                # If this run produced test results, update only test fields
+                # Performance metric fields (accuracy, precision, etc.) should always be merged
+                performance_fields = {'accuracy', 'precision', 'recall', 'f1_score', 'f1', 
+                                    'auc', 'bleu', 'rouge', 'mrr', 'mae', 'mse', 'rmse', 'r2'}
+                
+                # If this run produced test results, update only test fields + performance metrics
                 is_test_run = any(k in metrics for k in {'tests_passed', 'tests_failed', 'test_details'})
                 
                 if is_test_run:
-                    # Only update test-related fields, preserve all other metrics
+                    # Update test-related fields and performance metrics, preserve all other metrics
+                    preserved_count = 0
                     for key, value in metrics.items():
-                        if key in test_fields:
+                        if key in test_fields or key in performance_fields:
                             merged_metrics[key] = value
-                    self.logger.info(f"[run_experiment] Updated test results, preserved {len([k for k in existing_metrics if k not in test_fields])} experiment metrics")
+                        else:
+                            preserved_count += 1
+                    self.logger.info(f"[run_experiment] Updated test results, preserved {len([k for k in existing_metrics if k not in test_fields and k not in performance_fields])} experiment metrics")
                 else:
                     # Regular experiment run - merge all metrics (new takes precedence)
                     merged_metrics.update(metrics)
