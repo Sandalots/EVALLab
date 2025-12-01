@@ -120,7 +120,6 @@ experiments:
   #   description: "Run Logistic Rule Regression test on breast cancer dataset"
 
 baseline:
-  strategy: "double_run"
   save_baseline: true
   baseline_file: "paper_metrics.json"
   comparison_file: "complete_results.json"

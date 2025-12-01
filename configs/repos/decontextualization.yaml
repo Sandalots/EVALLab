@@ -27,7 +27,6 @@ experiments:
     description: "Run decontextualization retrieval and QA experiments"
 
 baseline:
-  strategy: "double_run"
   save_baseline: true
   baseline_file: "paper_metrics.json"
   comparison_file: "complete_results.json"

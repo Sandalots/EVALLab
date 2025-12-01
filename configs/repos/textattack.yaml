@@ -50,7 +50,6 @@ experiments:
   #   description: "Run data augmentation API tests"
 
 baseline:
-  strategy: "double_run"
   save_baseline: true
   baseline_file: "paper_metrics.json"
   baseline_log: "baseline/log.csv"
