@@ -939,8 +939,11 @@ class ExperimentExecutor:
             import re
             metrics = {}
             metric_patterns = [
+                # Pattern for "Metric: value" or "Metric = value" format
                 r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",
-                r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)"
+                r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)",
+                # Pattern for sklearn-style output: "Accuracy: 0.9298" with capital first letter
+                r"(Accuracy|Precision|Recall|F1\s+Score):\s+([0-9\.eE+-]+)",
             ]
             for line in stdout_lines + stderr_lines:
                 for pat in metric_patterns:
