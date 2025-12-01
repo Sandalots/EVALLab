@@ -756,8 +756,19 @@ JSON:"""
         flat_reproduced = self._flatten_dict(reproduced) if any(isinstance(v, dict) for v in reproduced.values()) else reproduced
 
         # Normalize all keys in both baseline and reproduced dicts
-        norm_baseline = {self._normalize_metric_key(str(k)): (k, v) for k, v in baseline.metrics.items()}
-        norm_reproduced = {self._normalize_metric_key(str(k)): (k, v) for k, v in flat_reproduced.items()}
+        # For duplicates after normalization, prefer entries with fewer path segments (shorter keys)
+        norm_baseline = {}
+        for k, v in baseline.metrics.items():
+            norm_key = self._normalize_metric_key(str(k))
+            if norm_key not in norm_baseline or str(k).count('/') < str(norm_baseline[norm_key][0]).count('/'):
+                norm_baseline[norm_key] = (k, v)
+        
+        norm_reproduced = {}
+        for k, v in flat_reproduced.items():
+            norm_key = self._normalize_metric_key(str(k))
+            # Prefer entries with fewer slashes (e.g., 'root/accuracy' over 'root/root/root/accuracy')
+            if norm_key not in norm_reproduced or str(k).count('/') < str(norm_reproduced[norm_key][0]).count('/'):
+                norm_reproduced[norm_key] = (k, v)
 
         # Log all keys and values for debugging
         logger.info(f"[DEBUG] Baseline metric keys/values: {list(baseline.metrics.items())}")
