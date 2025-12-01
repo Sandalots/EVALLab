@@ -21,7 +21,7 @@ experiments:
       description: "Patch script to output log.csv for per-example tracking"
       modifications:
         - search: "textattack attack"
-          replace: "textattack attack --log-to-csv log.csv --num_workers=1"
+          replace: "textattack attack --log-to-csv log.csv --num-workers-per-device 1"
     args: []
     timeout: 600
     description: "Run TextFooler attack on RoBERTa SST-2 model"
