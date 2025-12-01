@@ -21,6 +21,12 @@ from src.paper_parser import PaperParser, PaperContent
 from src.repo_retriever import RepoRetriever
 from src.experiment_executor import ExperimentExecutor, CodebaseInfo, ExperimentConfig
 from src.result_evaluator import ResultEvaluator
+from src.helper.repo_config import (
+    get_repo_config, 
+    list_supported_repos,
+    execute_pre_run_setup,
+    execute_experiments
+)
 
 # Custom colored logging formatter
 class ColoredFormatter(logging.Formatter):
@@ -1281,300 +1287,35 @@ class ReproductionAgent:
 
         results = []
 
-
-        # Special handling: if this is an AIX360 codebase, run RBM test files to generate metrics
-        if 'aix360' in str(codebase_info.path).lower():
-            logger.info("Detected AIX360 codebase - running RBM tests to generate metrics")
-            logger.warning("⚠ AIX360 requires compatible library versions:")
-            logger.warning("  - numpy<2.0 (NumPy 2.0 removed np.NaN, np.NINF)")
-            logger.warning("  - scikit-learn<1.2 (OneHotEncoder 'sparse' parameter renamed)")
-            logger.warning("  - cvxpy with ECOS solver installed")
-            
-            # Install required RBM dependencies with compatible versions
-            logger.info("  Installing RBM dependencies (cvxpy, pandas, scikit-learn, ecos)...")
-            try:
-                venv_python = codebase_info.path / 'venv' / 'bin' / 'python'
-                if venv_python.exists():
-                    import subprocess
-                    # Install compatible versions
-                    subprocess.run([str(venv_python), '-m', 'pip', 'install', 
-                                    'cvxpy', 'pandas', 'ecos',
-                                    'numpy<2.0', 'scikit-learn<1.2'],
-                                   capture_output=True, timeout=300, check=True)
-                    logger.info("  ✓ RBM dependencies installed with compatible versions")
-            except Exception as e:
-                logger.warning(f"  ⚠ Failed to install RBM dependencies: {e}")
-                logger.warning("  Tests may fail due to library incompatibilities")
-            
-            # Patch deprecated pandas imports in test files
-            logger.info("  Patching deprecated pandas imports...")
-            rbm_test_files = [
-                'tests/rbm/test_Linear_Rule_Regression.py',
-                'tests/rbm/test_Logistic_Rule_Regression.py',
-                'tests/rbm/test_Boolean_Rule_CG.py',
-            ]
-            
-            patched_files = []
-            for test_file in rbm_test_files:
-                test_path = codebase_info.path / test_file
-                if test_path.exists():
-                    try:
-                        content = test_path.read_text()
-                        if 'pandas.util.testing' in content:
-                            patched = content.replace('from pandas.util.testing import', 'from pandas.testing import')
-                            patched_path = test_path.parent / f"patched_{test_path.name}"
-                            patched_path.write_text(patched)
-                            logger.info(f"    Patched: {test_file}")
-                            patched_files.append((test_path, patched_path))
-                        else:
-                            patched_files.append((test_path, test_path))
-                    except Exception as e:
-                        logger.warning(f"    ⚠ Failed to patch {test_file}: {e}")
-                        patched_files.append((test_path, test_path))
-            
-            # Run only Boolean test (others have deeper compatibility issues)
-            logger.info("  Running RBM Boolean Rule test (most compatible)...")
-            test_path = codebase_info.path / 'tests/rbm/test_Boolean_Rule_CG.py'
-            if test_path.exists():
-                logger.info(f"  Running RBM test: test_Boolean_Rule_CG.py")
-                config = ExperimentConfig(
-                    script_path=test_path,
-                    args=[],
-                    env_vars={},
-                    working_dir=codebase_info.path,
-                    timeout=self.config['experiment']['timeout']
-                )
-                result = self.experiment_executor.run_experiment(config)
-                results.append(result)
-                if result.success:
-                    logger.info(f"    ✓ Success (duration: {result.duration:.2f}s)")
-                else:
-                    logger.warning(f"    ✗ Failed: {result.stderr[:200] if result.stderr else 'Unknown error'}")
-            
-            # Clean up patched files
-            for original, patched in patched_files:
-                if patched != original and patched.exists():
-                    try:
-                        patched.unlink()
-                    except:
-                        pass
-            
-            # Create and run RBM metrics extraction script
-            rbm_metrics_script = codebase_info.path / 'run_rbm_metrics.py'
-            logger.info(f"  Creating RBM metrics extraction script: {rbm_metrics_script}")
-            
-            # Generate the script content
-            rbm_script_content = '''#!/usr/bin/env python3
-"""
-AIX360 RBM Metrics Extraction Script
-Runs the Boolean Rule CG algorithm and outputs metrics in a structured format
-Auto-generated by EVALLab
-"""
-
-import pandas as pd
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
-from aix360.algorithms.rbm import FeatureBinarizer, BRCGExplainer, BooleanRuleCG
-
-
-def main():
-    print("=" * 80)
-    print("AIX360 Boolean Rule Column Generation - Metrics Extraction")
-    print("=" * 80)
-    
-    # Load breast cancer dataset
-    bc = load_breast_cancer()
-    bc_df = pd.DataFrame(bc.data, columns=bc.feature_names)
-    
-    # Split data
-    X_train, X_test, Y_train, Y_test = train_test_split(
-        bc_df, bc.target, test_size=0.2, random_state=31
-    )
-    
-    # Feature binarization
-    print("\\n[1/3] Feature Binarization...")
-    fb = FeatureBinarizer(negations=True)
-    X_train_fb = fb.fit_transform(X_train)
-    X_test_fb = fb.transform(X_test)
-    print(f"  ✓ Training features: {len(X_train_fb.columns)}")
-    print(f"  ✓ Test features: {len(X_test_fb.columns)}")
-    
-    # Train Boolean Rule model
-    print("\\n[2/3] Training Boolean Rule Model...")
-    boolean_model = BooleanRuleCG(silent=True)
-    explainer = BRCGExplainer(boolean_model)
-    explainer.fit(X_train_fb, Y_train)
-    print("  ✓ Model trained")
-    
-    # Predict and calculate metrics
-    print("\\n[3/3] Evaluating Model...")
-    Y_pred = explainer.predict(X_test_fb)
-    
-    accuracy = accuracy_score(Y_test, Y_pred)
-    precision = precision_score(Y_test, Y_pred)
-    recall = recall_score(Y_test, Y_pred)
-    f1 = f1_score(Y_test, Y_pred)
-    
-    # Print metrics in structured format for parsing
-    print("\\n" + "=" * 80)
-    print("METRICS SUMMARY")
-    print("=" * 80)
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1 Score: {f1:.4f}")
-    print("=" * 80)
-    
-    # Get explanation rules
-    explanation = explainer.explain()
-    print("\\nLEARNED RULES:")
-    for i, rule in enumerate(explanation['rules'], 1):
-        print(f"  {i}. {rule}")
-    
-    print("\\n✓ Metrics extraction complete")
-    
-    # Return metrics as dict for potential JSON output
-    return {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1_score': f1,
-        'num_rules': len(explanation['rules']),
-        'test_size': len(Y_test),
-        'train_size': len(Y_train)
-    }
-
-
-if __name__ == '__main__':
-    metrics = main()
-'''
-            
-            try:
-                rbm_metrics_script.write_text(rbm_script_content)
-                rbm_metrics_script.chmod(0o755)  # Make executable
-                logger.info(f"  ✓ Created metrics script")
-                
-                # Run the metrics script
-                logger.info(f"  Running RBM metrics extraction...")
-                config = ExperimentConfig(
-                    script_path=rbm_metrics_script,
-                    args=[],
-                    env_vars={},
-                    working_dir=codebase_info.path,
-                    timeout=self.config['experiment']['timeout']
-                )
-                result = self.experiment_executor.run_experiment(config)
-                results.append(result)
-                if result.success:
-                    logger.info(f"  ✓ RBM Metrics extracted (duration: {result.duration:.2f}s)")
-                else:
-                    logger.warning(f"  ✗ RBM Metrics extraction failed: {result.stderr[:200] if result.stderr else 'Unknown error'}")
-            except Exception as e:
-                logger.warning(f"  ⚠ Failed to create/run metrics script: {e}")
-            
-            # Run SHAP metrics script if it exists
-            shap_metrics_script = codebase_info.path / 'run_shap_metrics.py'
-            if shap_metrics_script.exists():
-                logger.info(f"Running AIX360 SHAP metrics script: {shap_metrics_script}")
-                config = ExperimentConfig(
-                    script_path=shap_metrics_script,
-                    args=[],
-                    env_vars={},
-                    working_dir=codebase_info.path,
-                    timeout=self.config['experiment']['timeout']
-                )
-                result = self.experiment_executor.run_experiment(config)
-                results.append(result)
-                if result.success:
-                    logger.info(f"  ✓ SHAP Success (duration: {result.duration:.2f}s)")
-                else:
-                    logger.warning(f"  ✗ SHAP Failed: {result.stderr[:200]}")
+        # Check for repo-specific configuration (YAML-based)
+        repo_config = get_repo_config(codebase_info.path)
         
-        # Special handling: if this is a textattack codebase, run the smaller IMDB LSTM training script
-        if 'textattack' in str(codebase_info.path).lower():
-            # Prefer attack script for faster metric extraction
-            attack_script = codebase_info.path / 'examples' / 'attack' / 'attack_roberta_sst2_textfooler.sh'
-            if attack_script.exists():
-                # Dynamically patch the script to output log.csv to codebase root
-                logger.info(f"Running textattack attack script (with dynamic log.csv patch): {attack_script}")
-                
-                # Remove existing log.csv if it exists to avoid permission issues
-                log_csv_path = codebase_info.path / 'log.csv'
-                if log_csv_path.exists():
-                    try:
-                        log_csv_path.unlink()
-                        logger.info(f"  Removed existing log.csv: {log_csv_path}")
-                    except Exception as e:
-                        logger.warning(f"  Could not remove existing log.csv: {e}")
-                
-                # Read original script
-                with open(attack_script, 'r') as f:
-                    original_content = f.read()
-                
-                # Create patched version that outputs log.csv to codebase root
-                patched_content = original_content
-                if '--log-to-csv' not in original_content:
-                    # Use absolute path to avoid any directory confusion
-                    log_csv_abs_path = str(codebase_info.path / 'log.csv')
-                    # If script doesn't already specify log output, add it
-                    patched_content = original_content.replace(
-                        '--num-examples',
-                        f'--log-to-csv "{log_csv_abs_path}" --num-examples'
-                    )
-                
-                # Write patched script to temp file
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False, dir=codebase_info.path) as temp_script:
-                    temp_script.write(patched_content)
-                    temp_script_path = Path(temp_script.name)
-                
-                # Make temp script executable
-                import os
-                os.chmod(temp_script_path, 0o755)
-                
-                logger.info(f"  Created temporary patched script: {temp_script_path}")
-                logger.info(f"  Log will be written to: {log_csv_path}")
-                
-                config = ExperimentConfig(
-                    script_path=temp_script_path,
-                    args=[],
-                    env_vars={},
-                    working_dir=codebase_info.path,
-                    timeout=self.config['experiment']['timeout']
+        if repo_config:
+            logger.info(f"Detected {repo_config.name} - using YAML configuration")
+            
+            # Run pre-setup (dependencies + patches)
+            try:
+                logger.info(f"  Running {repo_config.name} pre-run setup...")
+                execute_pre_run_setup(repo_config, codebase_info.path, logger)
+                logger.info(f"  ✓ Pre-run setup complete")
+            except Exception as e:
+                logger.warning(f"  ⚠ Pre-run setup failed: {e}")
+            
+            # Run experiments defined in YAML
+            try:
+                logger.info(f"  Running {repo_config.name} experiments...")
+                exp_results = execute_experiments(
+                    repo_config,
+                    codebase_info.path,
+                    logger,
+                    self.experiment_executor
                 )
-                result = self.experiment_executor.run_experiment(config)
-                results.append(result)
-                
-                # Clean up temp script
-                try:
-                    temp_script_path.unlink()
-                except Exception as e:
-                    logger.warning(f"Failed to delete temp script: {e}")
-                
-                if result.success:
-                    logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
-                else:
-                    logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
-            else:
-                # Fallback to train script if attack script is missing
-                train_script = codebase_info.path / 'examples' / 'train' / 'train_lstm_imdb_sentiment_classification.sh'
-                if train_script.exists():
-                    logger.info(f"Running textattack train script: {train_script}")
-                    config = ExperimentConfig(
-                        script_path=train_script,
-                        args=[],
-                        env_vars={},
-                        working_dir=codebase_info.path,
-                        timeout=self.config['experiment']['timeout']
-                    )
-                    result = self.experiment_executor.run_experiment(config)
-                    results.append(result)
-                    if result.success:
-                        logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
-                    else:
-                        logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
+                results.extend(exp_results)
+                logger.info(f"  ✓ Completed {len(exp_results)} experiments")
+            except Exception as e:
+                logger.warning(f"  ⚠ Experiment execution failed: {e}")
+        else:
+            logger.debug(f"No YAML configuration for {codebase_info.path.name}")
 
         # Run priority scripts from README first
         for script_path, args in priority_scripts[:2]:  # Limit to 2
