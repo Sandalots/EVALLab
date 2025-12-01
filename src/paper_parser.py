@@ -88,5 +88,6 @@ class PaperParser:
             # Remove trailing reference numbers in brackets (e.g., [1], [12])
             url = re.sub(r'\[[0-9]+\]$', '', url)
             cleaned_urls.append(url)
+            
         # Remove duplicates while preserving order
         return list(dict.fromkeys(cleaned_urls))
