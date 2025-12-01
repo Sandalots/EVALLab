@@ -70,7 +70,7 @@ class ColoredFormatter(logging.Formatter):
 
         # Highlight special keywords in bright yellow (ollama, baseline, reproduced, etc.)
         message = re.sub(
-            r'\b(ollama|llama3|baseline|reproduced?|reproduction|grade|assessment|success\s+rate|avg\s+deviation|average\s+deviation|mean\s+deviation|avg\s+diff|deviation|difference|diff|metric|method|experiment|stage|pipeline|configuration|granularity|retrieval|downstream|model)\b',
+            r'\b(ollama|llama3|baseline|reproduced?|reproduction|summary|grade|final|overall|confidence|level|assessment|success\s+rate|avg\s+deviation|average\s+deviation|mean\s+deviation|avg\s+diff|deviation|difference|diff|metric|method|experiment|stage|pipeline|configuration|granularity|retrieval|downstream|model)\b',
             f'{self.KEYWORD_COLOR}\\1{base_color}',
             message,
             flags=re.IGNORECASE
@@ -78,7 +78,7 @@ class ColoredFormatter(logging.Formatter):
 
         # Highlight ML metric names in red (F1, accuracy, recall, precision, etc.)
         message = re.sub(
-            r'\b(f1|accuracy|recall|precision|mrr|specificity|sensitivity|auc|roc|mse|mae|rmse|r2|loss|score)[-_\s]?(score|value|rate)?s?\b',
+            r'\b(f1|accuracy|recall|precision|mrr|specificity|sensitivity|auc|avg|best|roc|mse|mae|rmse|r2|loss|score)[-_\s]?(score|value|rate)?s?\b',
             f'{self.ML_METRIC_COLOR}\\1\\2{base_color}',
             message,
             flags=re.IGNORECASE
