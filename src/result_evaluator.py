@@ -44,51 +44,6 @@ class ExperimentSet:
 
 
 class ResultEvaluator:
-    def compare_per_example_results(self, baseline_examples, reproduced_examples):
-        """
-        Compare per-example attack results between baseline and reproduced runs.
-        Returns a list of diffs (dicts) for mismatched predictions or outputs.
-        """
-        diffs = []
-        # Use original_text as the key for matching
-        baseline_map = {ex.get('original_text'): ex for ex in baseline_examples}
-        reproduced_map = {ex.get('original_text'): ex for ex in reproduced_examples}
-        for key in baseline_map:
-            base = baseline_map[key]
-            repro = reproduced_map.get(key)
-            if not repro:
-                diffs.append({'original_text': key, 'error': 'Missing in reproduced'})
-                continue
-            # Compare outputs and result_type
-            mismatch = False
-            diff_entry = {'original_text': key}
-            for field in ['perturbed_text', 'original_output', 'perturbed_output', 'ground_truth_output', 'result_type']:
-                base_val = base.get(field)
-                repro_val = repro.get(field)
-                if base_val != repro_val:
-                    mismatch = True
-                    diff_entry[field] = {'baseline': base_val, 'reproduced': repro_val}
-            if mismatch:
-                diffs.append(diff_entry)
-        return diffs
-
-
-    def generate_per_example_diff_table(self, diffs):
-        """
-        Generate an HTML table for per-example prediction diffs.
-        """
-        if not diffs:
-            return "<p>No per-example mismatches found.</p>"
-        headers = set()
-        for d in diffs:
-            headers.update(d.keys())
-        headers = list(headers)
-        html = ["<table border='1' style='border-collapse:collapse;'>"]
-        html.append("<tr>" + ''.join(f"<th>{h}</th>" for h in headers) + "</tr>")
-        for d in diffs:
-            html.append("<tr>" + ''.join(f"<td>{d.get(h, '')}</td>" for h in headers) + "</tr>")
-        html.append("</table>")
-        return '\n'.join(html)
 
     def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
         """Recursively extract numeric metrics from nested dictionaries, and also include all top-level numeric keys (for flat summary metrics)."""
@@ -763,9 +718,7 @@ JSON:"""
 
     def generate_report(self, comparisons: List[ComparisonResult],
                        baseline_metrics: dict = None,
-                       reproduced_metrics: dict = None,
-                       baseline_examples: list = None,
-                       reproduced_examples: list = None) -> str:
+                       reproduced_metrics: dict = None) -> str:
         """
         Generate a human-readable report of the comparison.
 
@@ -795,17 +748,6 @@ JSON:"""
             if exp_set not in by_experiment:
                 by_experiment[exp_set] = []
             by_experiment[exp_set].append(comp)
-
-        # If per-example results are available, show per-example diffs table
-        if baseline_examples and reproduced_examples:
-            diffs = self.compare_per_example_results(baseline_examples, reproduced_examples)
-            per_example_total = max(len(baseline_examples), len(reproduced_examples))
-            per_example_matches = per_example_total - len(diffs)
-            
-            report_lines.append("\nPer-Example Prediction Differences:")
-            report_lines.append(self.generate_per_example_diff_table(diffs))
-            report_lines.append(f"Per-example matches: {per_example_matches}/{per_example_total}")
-            report_lines.append("")
 
         # Overall summary (per-example metrics are now included in comparisons)
         total_comparisons = len(comparisons)
