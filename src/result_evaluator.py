@@ -377,10 +377,10 @@ class ResultEvaluator:
                 logger.error(f"Failed to load root complete_results.json: {e}")
 
         # Dynamically discover output directories with complete_results.json
-        output_dirs = []
-        for item in codebase_path.iterdir():
-            if item.is_dir() and (item / "complete_results.json").exists():
-                output_dirs.append(item.name)
+        output_dirs = [
+            item.name for item in codebase_path.iterdir()
+            if item.is_dir() and (item / "complete_results.json").exists()
+        ]
 
         if not experiment_sets and not output_dirs:
             logger.warning(
@@ -574,10 +574,10 @@ JSON:"""
                 logger.error(f"Failed to extract from {root_results_path}: {e}")
 
         # Dynamically discover output directories
-        output_dirs = []
-        for item in codebase_path.iterdir():
-            if item.is_dir() and (item / "complete_results.json").exists():
-                output_dirs.append(item.name)
+        output_dirs = [
+            item.name for item in codebase_path.iterdir()
+            if item.is_dir() and (item / "complete_results.json").exists()
+        ]
 
         for dir_name in output_dirs:
             results_path = codebase_path / dir_name / "complete_results.json"
@@ -606,10 +606,10 @@ JSON:"""
         metrics = {}
 
         # Dynamically discover output directories with report.md
-        output_dirs = []
-        for item in codebase_path.iterdir():
-            if item.is_dir() and (item / "report.md").exists():
-                output_dirs.append(item.name)
+        output_dirs = [
+            item.name for item in codebase_path.iterdir()
+            if item.is_dir() and (item / "report.md").exists()
+        ]
 
         for dir_name in output_dirs:
             report_path = codebase_path / dir_name / "report.md"
@@ -1495,7 +1495,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         data = []
         for comp in comparisons:
             parts = comp.configuration.split('/')
-            exp_set = parts[0] if len(parts) > 0 else "unknown"
+            exp_set = parts[0] if parts else "unknown"
             granularity = parts[1] if len(parts) > 1 else "unknown"
             strategy = parts[2] if len(parts) > 2 else "unknown"
             task_type = parts[3] if len(parts) > 3 else "unknown"

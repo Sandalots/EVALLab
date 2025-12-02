@@ -280,11 +280,11 @@ class ExperimentExecutor:
         # Recursively search for entry points, excluding unwanted dirs
         exclude_dirs = {'venv', 'env', 'site-packages', '__pycache__'}
         for pattern in entry_patterns:
-            for match in path.rglob(pattern):
-                # Exclude files in unwanted directories
-                if not any(part.startswith('.') or part in exclude_dirs for part in match.parts):
-                    if match.is_file() and match not in entry_points:
-                        entry_points.append(match)
+            entry_points.extend([
+                match for match in path.rglob(pattern)
+                if match.is_file() and match not in entry_points
+                and not any(part.startswith('.') or part in exclude_dirs for part in match.parts)
+            ])
 
         # Sort by likelihood (evaluate > test > main > run > train > experiment)
         priority_order = ['evaluate', 'test',
@@ -313,15 +313,10 @@ class ExperimentExecutor:
                     code = f.read()
                     import_lines = [line for line in code.splitlines() if line.strip(
                     ).startswith('import') or line.strip().startswith('from')]
-                    for line in import_lines:
-                        if 'numpy' in line and 'numpy' not in dependencies:
-                            dependencies.append('numpy')
-                        if 'matplotlib' in line and 'matplotlib' not in dependencies:
-                            dependencies.append('matplotlib')
-                        if 'torch' in line and 'torch' not in dependencies:
-                            dependencies.append('torch')
-                        if 'torchvision' in line and 'torchvision' not in dependencies:
-                            dependencies.append('torchvision')
+                    import_text = ' '.join(import_lines)
+                    for dep in ['numpy', 'matplotlib', 'torch', 'torchvision']:
+                        if dep in import_text and dep not in dependencies:
+                            dependencies.append(dep)
             except Exception as e:
                 self.logger.warning(
                     f"Error auto-detecting dependencies from entry script: {e}")
