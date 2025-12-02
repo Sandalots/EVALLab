@@ -23,7 +23,6 @@ from src.experiment_executor import ExperimentExecutor, CodebaseInfo, Experiment
 from src.result_evaluator import ResultEvaluator
 from src.helper.repo_config import (
     get_repo_config, 
-    list_supported_repos,
     execute_pre_run_setup,
     execute_experiments
 )
@@ -58,7 +57,6 @@ class ColoredFormatter(logging.Formatter):
 
     def colorize_message(self, message, base_color):
         """Add special highlighting to numbers, paths, and metrics in the message."""
-        import re
 
         # Highlight status words in green (success, pass, completed, etc.)
         message = re.sub(
@@ -532,13 +530,10 @@ class ReproductionAgent:
         # Step 4: Retrieve codebase (Stage 2 - NEW UNIFIED MODULE)
         print("\n" + "="*80)
         print("\033[92m┌" + "─"*78 + "┐\033[0m")
-        print("\033[92m│\033[0m" +
-              "\033[1;92m STAGE 2/4: CODE RETRIEVAL".center(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" + "\033[1;92m STAGE 2/4: CODE RETRIEVAL".center(78) + "\033[92m│\033[0m")
         print("\033[92m├" + "─"*78 + "┤\033[0m")
-        print("\033[92m│\033[0m" +
-              " 🔎 Priority: User path → GitHub (paper-specific) → Local dir (fallback)".ljust(78) + "\033[92m│\033[0m")
-        print("\033[92m│\033[0m" +
-              " 📦 Searching for experiment code and dependencies".ljust(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" + " 🔎 Priority: User path → GitHub (paper-specific) → Local dir (fallback)".ljust(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" + " 📦 Searching for experiment code and dependencies".ljust(78) + "\033[92m│\033[0m")
         print("\033[92m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
@@ -571,11 +566,13 @@ class ReproductionAgent:
             print("\033[91m│\033[0m" + "   3. Run the agent again".ljust(78) + "\033[91m│\033[0m")
             print("\033[91m│\033[0m" + " ".ljust(78) + "\033[91m│\033[0m")
             print("\033[91m│\033[0m" + " Checked:".ljust(78) + "\033[91m│\033[0m")
+
             if local_path:
-                print("\033[91m│\033[0m" + f"   ✗ User path: {local_path}".ljust(78) + "\033[91m│\033[0m")
-            print("\033[91m│\033[0m" + "   ✗ Local directory: ./papers/codebases/".ljust(78) + "\033[91m│\033[0m")
+                print("".join(["\033[91m│\033[0m", f"   ✗ User path: {local_path}".ljust(78), "\033[91m│\033[0m"]))
+            print("".join(["\033[91m│\033[0m", "   ✗ Local directory: ./papers/codebases/".ljust(78), "\033[91m│\033[0m"]))
+
             if paper_content.github_urls:
-                print("\033[91m│\033[0m" + f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(78) + "\033[91m│\033[0m")
+                print("".join(["\033[91m│\033[0m", f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(78), "\033[91m│\033[0m"]))
             else:
                 print("\033[91m│\033[0m" + "   ✗ GitHub URLs: None found in paper".ljust(78) + "\033[91m│\033[0m")
 
@@ -743,13 +740,10 @@ class ReproductionAgent:
         # Generate comprehensive conclusions and recommendations
         print("\n" + "="*80)
         print("\033[92m┌" + "─"*78 + "┐\033[0m")
-        print("\033[92m│\033[0m" +
-              "\033[1;92m 📋 CONCLUSIONS & RECOMMENDATIONS".center(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" +"\033[1;92m 📋 CONCLUSIONS & RECOMMENDATIONS".center(78) + "\033[92m│\033[0m")
         print("\033[92m├" + "─"*78 + "┤\033[0m")
-        print("\033[92m│\033[0m" +
-              " ✅ Comprehensive analysis of reproduction success".ljust(78) + "\033[92m│\033[0m")
-        print("\033[92m│\033[0m" +
-              " 🔍 Key findings and improvement recommendations".ljust(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" + " ✅ Comprehensive analysis of reproduction success".ljust(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" + " 🔍 Key findings and improvement recommendations".ljust(78) + "\033[92m│\033[0m")
         print("\033[92m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
@@ -764,13 +758,10 @@ class ReproductionAgent:
         # Generate visualizations
         print("\n" + "="*80)
         print("\033[95m┌" + "─"*78 + "┐\033[0m")
-        print("\033[95m│\033[0m" +
-              "\033[1;95m 📊 VISUALIZATION GENERATION".center(78) + "\033[95m│\033[0m")
+        print("\033[95m│\033[0m" + " \033[1;95m 📊 VISUALIZATION GENERATION".center(78) + "\033[95m│\033[0m")
         print("\033[95m├" + "─"*78 + "┤\033[0m")
-        print("\033[95m│\033[0m" +
-              " 📈 Creating charts: bar, scatter, heatmap, histogram".ljust(78) + "\033[95m│\033[0m")
-        print("\033[95m│\033[0m" +
-              " 🎨 Generating HTML dashboard and CSV exports".ljust(78) + "\033[95m│\033[0m")
+        print("\033[95m│\033[0m" + " 📈 Creating charts: bar, scatter, heatmap, histogram".ljust(78) + "\033[95m│\033[0m")
+        print("\033[95m│\033[0m" + " 🎨 Generating HTML dashboard and CSV exports".ljust(78) + "\033[95m│\033[0m")
         print("\033[95m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
