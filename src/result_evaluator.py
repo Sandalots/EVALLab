@@ -134,7 +134,7 @@ class ResultEvaluator:
                     for root, dirs, files in os.walk(d):
                         logger.debug(f"[DEBUG] Checking directory: {root}")
                         if 'paper_metrics.json' in files:
-                            file_path = os.path.join(root, 'paper_metrics.json')
+                            file_path = Path(root) / 'paper_metrics.json'
                             logger.debug(f"[DEBUG] Found paper_metrics.json at: {file_path}")
                             try:
                                 with open(file_path, 'r') as f:
@@ -805,7 +805,8 @@ JSON:"""
         # Average percent difference per config
         config_scores = {k: sum(v) / len(v) for k, v in best_configs.items()}
 
-        for config, avg_diff in sorted(config_scores.items(), key=lambda x: x[1])[:10]:
+        from operator import itemgetter
+        for config, avg_diff in sorted(config_scores.items(), key=itemgetter(1))[:10]:
             report_lines.append(f"  {config}: avg diff = {avg_diff:.2f}%")
 
         report_lines.extend([
@@ -1200,7 +1201,8 @@ Provide a concise analysis (3-4 paragraphs)."""
             best_configs[config].append(pct)
 
         config_scores = {k: sum(v) / len(v) for k, v in best_configs.items()}
-        top_configs = sorted(config_scores.items(), key=lambda x: x[1])[:3]
+        from operator import itemgetter
+        top_configs = sorted(config_scores.items(), key=itemgetter(1))[:3]
 
         if top_configs:
             lines.append("Best Reproduced Configurations:")
@@ -1362,11 +1364,12 @@ Provide a concise analysis (3-4 paragraphs)."""
         data = []
         for comp in comparisons:
             parts = comp.configuration.split('/')
-            exp_set = parts[0] if parts else "unknown"
-            granularity = parts[1] if len(parts) > 1 else "unknown"
-            strategy = parts[2] if len(parts) > 2 else "unknown"
-            task_type = parts[3] if len(parts) > 3 else "unknown"
-            retriever = parts[4] if len(parts) > 4 else "unknown"
+            # Unpack with defaults using extended unpacking
+            exp_set, *rest = parts or ['unknown']
+            granularity = rest[0] if len(rest) > 0 else "unknown"
+            strategy = rest[1] if len(rest) > 1 else "unknown"
+            task_type = rest[2] if len(rest) > 2 else "unknown"
+            retriever = rest[3] if len(rest) > 3 else "unknown"
 
             data.append({
                 'experiment_set': exp_set,
@@ -1389,7 +1392,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         def _clean_artifacts(s: str) -> str:
             try:
                 txt = str(s)
-            except Exception:
+            except (TypeError, ValueError):
                 return s
             ansi_suffixes = [*(f"{i}m" for i in range(30, 38)), *(f"{i}m" for i in range(90, 98)), "39m", "0m"]
             for suf in ansi_suffixes:

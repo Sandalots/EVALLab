@@ -39,7 +39,7 @@ def ensure_module_in_venv(venv_python: str, module_name: str, package_name: Opti
         result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
         available = result.stdout.strip().splitlines()[0].strip() == 'True'
         
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         available = False
 
     if available:
@@ -62,7 +62,7 @@ def ensure_module_in_venv(venv_python: str, module_name: str, package_name: Opti
     try:
         result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
         return result.stdout.strip().splitlines()[0].strip() == 'True'
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         return False
 
 def _get_python_executable():
@@ -171,7 +171,7 @@ class ExperimentExecutor:
             log_filename = f"agent_execution_{paper_name}.log"
             file_handler = logging.FileHandler(log_filename)
             file_handler.setFormatter(logging.Formatter(
-                '%(asctime)s %(levelname)s: %(message)s'))
+                '{asctime} {levelname}: {message}', style='{'))
             self.logger.addHandler(file_handler)
 
     # ============================================================================

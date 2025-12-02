@@ -158,7 +158,7 @@ class ReproductionAgent:
                     try:
                         val = float(m.group(2))
                         metrics[key] = val
-                    except Exception:
+                    except (ValueError, TypeError):
                         continue
         return metrics
     """Main agent that coordinates paper reproduction workflow with integrated LLM."""
@@ -545,7 +545,7 @@ class ReproductionAgent:
         # Pass paper_path context to RepoRetriever for name-based fallbacks
         try:
             self.repo_retriever.paper_path = paper_path
-        except Exception:
+        except AttributeError:
             pass  # RepoRetriever may not have paper_path attribute in all configurations
 
         codebase_path = self.repo_retriever.retrieve_code(

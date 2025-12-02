@@ -155,8 +155,8 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         <div class="metric"><div><u>Mean Abs. Deviation</u></div><div class="metric-value">{mean_abs_dev}</div></div>
         <div class="metric"><div><u>Median Abs. Deviation</u></div><div class="metric-value">{median_abs_dev}</div></div>
         <div class="metric"><div><u>Std Dev of Deviations</u></div><div class="metric-value">{std_dev}</div></div>
-        <div class="metric"><div><u>Total EVALLab Runtime</u></div><div class="metric-value">{'{:.2f} seconds'.format(runtime_seconds) if runtime_seconds is not None else 'N/A'}</div></div>
-        <div class="metric"><div><u>Peak EVALLab Memory Usage</u></div><div class="metric-value">{'{:.2f} MB'.format(peak_memory_mb) if peak_memory_mb is not None else 'N/A'}</div></div>
+        <div class="metric"><div><u>Total EVALLab Runtime</u></div><div class="metric-value">{f'{runtime_seconds:.2f} seconds' if runtime_seconds is not None else 'N/A'}</div></div>
+        <div class="metric"><div><u>Peak EVALLab Memory Usage</u></div><div class="metric-value">{f'{peak_memory_mb:.2f} MB' if peak_memory_mb is not None else 'N/A'}</div></div>
     </div>
     '''
 
