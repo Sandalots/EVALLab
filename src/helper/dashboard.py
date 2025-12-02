@@ -108,7 +108,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     # Metrics summary
     total_comparisons = len(df) if df is not None else 0
-    passing = int(df['within_threshold'].sum()) if df is not None and 'within_threshold' in df else 0
+    passing = int(df['within_threshold'].sum()) if (df is not None and 'within_threshold' in df.columns) else 0
     failing = total_comparisons - passing
     success_rate = (passing / total_comparisons * 100) if total_comparisons > 0 else 0
     
@@ -181,7 +181,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     # Metrics Table (color-coded)
     table_html = ""
-    if df is not None and not df.empty:
+    if df is not None and len(df) > 0:
         table_html += '<div class="visualization"><h2>Metric Comparison Table</h2><div class="metrics-table-wrapper"><table class="metrics-table">'
         table_html += '<tr><th>Configuration</th><th>Metric</th><th>Baseline</th><th>Reproduced</th><th>Diff (%)</th><th>Status</th></tr>'
         table_html += _build_metrics_table_rows(df)

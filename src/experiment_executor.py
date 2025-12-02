@@ -286,13 +286,12 @@ class ExperimentExecutor:
         if entry_points:
             main_script = entry_points[0]
             try:
-                with open(main_script, encoding='utf-8') as f:
-                    code = f.read()
-                    import_lines = [line for line in code.splitlines() if line.strip(
-                    ).startswith(('import', 'from'))]
-                    import_text = ' '.join(import_lines)
-                    dependencies_set = set(dependencies)
-                    for dep in ('numpy', 'matplotlib', 'torch', 'torchvision'):
+                code = Path(main_script).read_text(encoding='utf-8')
+                import_lines = [line for line in code.splitlines() if line.strip(
+                ).startswith(('import', 'from'))]
+                import_text = ' '.join(import_lines)
+                dependencies_set = set(dependencies)
+                for dep in ('numpy', 'matplotlib', 'torch', 'torchvision'):
                         if dep in import_text and dep not in dependencies_set:
                             dependencies.append(dep)
                             dependencies_set.add(dep)
@@ -652,7 +651,7 @@ class ExperimentExecutor:
         # Convert to absolute path if needed, but DON'T resolve symlinks for venv Python
         # (venv wrappers are symlinks that set up PYTHONPATH correctly)
         if python_cmd and not os.path.isabs(python_cmd):
-            python_cmd = str(Path(python_cmd).absolute())
+            python_cmd = Path(python_cmd).absolute().as_posix()
 
 
         # Detect if this is a test script (pytest)
