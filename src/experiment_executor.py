@@ -24,29 +24,6 @@ import re
 
 logger = logging.getLogger(__name__)
 
-def ensure_tensorflow_hub(venv_python):
-    """Ensure tensorflow_hub and tensorflow are installed in the venv."""
-    check_code = (
-        "import importlib.util; "
-        "print(importlib.util.find_spec('tensorflow_hub') is not None); "
-        "print(importlib.util.find_spec('tensorflow') is not None)"
-    )
-    result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
-    lines = result.stdout.strip().splitlines()
-    tfhub_installed = lines[0].strip() == 'True' if lines else False
-    tf_installed = lines[1].strip() == 'True' if len(lines) > 1 else False
-
-    pkgs_to_install = []
-    if not tfhub_installed:
-        pkgs_to_install.append("tensorflow_hub")
-
-    if not tf_installed:
-        pkgs_to_install.append("tensorflow")
-
-    if pkgs_to_install:
-        print(f"[INFO] Installing missing packages in venv: {pkgs_to_install}")
-        subprocess.run([venv_python, "-m", "pip", "install"] + pkgs_to_install, check=True)
-
 def ensure_module_in_venv(venv_python: str, module_name: str, package_name: Optional[str] = None, timeout: int = 600) -> bool:
     """Ensure a Python module is importable in the given venv.
 
