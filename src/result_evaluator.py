@@ -72,67 +72,7 @@ class ResultEvaluator:
                 diffs.append(diff_entry)
         return diffs
 
-    def generate_attack_summary_table(self, metrics_dict):
-        """
-        Generate a TextAttack-style summary table as HTML from attack metrics.
-        """
-        keys = [
-            ('attack_success_rate', 'Attack Success Rate'),
-            ('avg_num_queries', 'Avg Num Queries'),
-            ('num_attacks', 'Num Attacks'),
-            ('num_successful_attacks', 'Num Successful Attacks')
-        ]
-        rows = []
-        for k, label in keys:
-            val = metrics_dict.get(k, '-')
-            if isinstance(val, float):
-                val = f"{val:.4f}" if 'rate' in k else f"{val:.2f}" if 'avg' in k else f"{val}"
-            rows.append(f"<tr><td>{label}</td><td>{val}</td></tr>")
-        return """
-        <table border="1" style="border-collapse:collapse;">
-            <tr><th>Metric</th><th>Value</th></tr>
-            {rows}
-        </table>
-        """.format(rows='\n'.join(rows))
 
-    def generate_per_example_table(self, examples, title="Per-Example Results"):
-        """
-        Generate an HTML table showing all per-example results.
-        Args:
-            examples: List of example dicts from log.csv
-            title: Title for the table
-        """
-        if not examples:
-            return "<p>No per-example data available.</p>"
-        
-        # Key fields to display
-        display_fields = ['original_text', 'perturbed_text', 'original_output', 'perturbed_output', 
-                         'ground_truth_output', 'result_type', 'num_queries']
-        
-        html = [f"<h3>{title}</h3>"]
-        html.append("<table border='1' style='border-collapse:collapse; font-size:12px;'>")
-        html.append("<tr>" + ''.join(f"<th style='padding:8px;background:#f0f0f0;'>{h.replace('_', ' ').title()}</th>" 
-                                     for h in display_fields) + "</tr>")
-        
-        for ex in examples:
-            html.append("<tr>")
-            for field in display_fields:
-                val = ex.get(field, '')
-                # Truncate long text
-                if isinstance(val, str) and len(val) > 100:
-                    val = val[:97] + '...'
-                # Color code result_type
-                if field == 'result_type':
-                    color = '#d4edda' if val == 'Successful' else '#f8d7da'
-                    html.append(f"<td style='padding:8px;background:{color};'>{val}</td>")
-                else:
-                    html.append(f"<td style='padding:8px;'>{val}</td>")
-            html.append("</tr>")
-        
-        html.append("</table>")
-        html.append(f"<p style='margin-top:8px;color:#666;'>Total examples: {len(examples)}</p>")
-        return '\n'.join(html)
-    
     def generate_per_example_diff_table(self, diffs):
         """
         Generate an HTML table for per-example prediction diffs.
@@ -172,7 +112,7 @@ class ResultEvaluator:
                     metrics.update(nested)
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 metrics[current_key] = float(value)
-        # Also add all top-level numeric keys (for flat summary metrics, e.g., from TextAttack)
+        # Also add all top-level numeric keys for flat summary metrics
         if prefix == "" and isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -841,12 +781,6 @@ JSON:"""
             "="*80,
             ""
         ]
-
-        # If attack metrics are available, show TextAttack-style summary table
-        if reproduced_metrics and any(k in reproduced_metrics for k in ["attack_success_rate", "avg_num_queries", "num_attacks", "num_successful_attacks"]):
-            report_lines.append("TextAttack-Style Attack Results Summary:")
-            report_lines.append(self.generate_attack_summary_table(reproduced_metrics))
-            report_lines.append("")
 
         if not comparisons:
             report_lines.append("No metrics available for comparison.")

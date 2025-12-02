@@ -29,10 +29,10 @@ class RepoConfig:
     """Configuration for a specific research repository (loaded from YAML)."""
     
     name: str
-    """Unique identifier for this repo (e.g., 'AIX360', 'TextAttack')"""
+    """Unique identifier for this repo (e.g., 'decontextualization')"""
     
     path_pattern: str
-    """Pattern to match repo path (e.g., 'AIX360', 'TextAttack')"""
+    """Pattern to match repo path (e.g., 'decontextualization')"""
     
     dependencies: List[str] = field(default_factory=list)
     """Extra dependencies to install before running experiments"""
@@ -207,37 +207,8 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
                 logger.warning(f"  ⚠ Failed to generate {exp_path.name}: {e}")
                 continue
         
-        # Patch script if needed (for TextAttack)
-        actual_path = exp_path
-        if 'patch_script' in exp and exp['patch_script'].get('enabled'):
-            import tempfile
-            patch_cfg = exp['patch_script']
-            
-            try:
-                # Remove existing log if specified
-                log_csv = repo_path / patch_cfg.get('log_csv_path', 'log.csv')
-                if log_csv.exists():
-                    log_csv.unlink()
-                
-                # Create patched version
-                original = exp_path.read_text()
-                patched = original
-                
-                for mod in patch_cfg.get('modifications', []):
-                    patched = patched.replace(mod['search'], mod['replace'])
-                
-                with tempfile.NamedTemporaryFile(
-                    mode='w', suffix='.sh', delete=False, dir=repo_path
-                ) as tmp:
-                    tmp.write(patched)
-                    actual_path = Path(tmp.name)
-                
-                actual_path.chmod(0o755)
-                logger.info(f"  → Patched {exp_path.name}")
-            except Exception as e:
-                logger.warning(f"  ⚠ Failed to patch script: {e}")
-        
         # Run experiment
+        actual_path = exp_path
         logger.info(f"  → Running {exp_name}: {exp_path.name}")
         
         try:

@@ -215,18 +215,6 @@ class ReproductionAgent:
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
 
-    def _load_per_example_results(self, log_csv_path):
-        """Load per-example results from a log.csv file (TextAttack format)."""
-        import csv
-        results = []
-        if not Path(log_csv_path).exists():
-            logger.warning(f"Per-example log file not found: {log_csv_path}")
-            return results
-        with open(log_csv_path, newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                results.append(dict(row))
-        return results
 
     def _default_config(self) -> dict:
         """Return default configuration."""
@@ -876,7 +864,7 @@ class ReproductionAgent:
                 "abstract": ["abstract"],
                 "methodology": [
                     "methodology", "methods", "approach", "system overview", "framework", "implementation", "setup", "procedure",
-                    "utilizing", "training", "model training", "attack recipes", "model architecture", "model details", "pipeline", "algorithm", "utilizing textattack to improve nlp models", "model training", "data augmentation", "adversarial training"
+                    "utilizing", "training", "model training", "model architecture", "model details", "pipeline", "algorithm", "data augmentation"
                 ],
                 "experiments": [
                     "experiments", "experiment", "evaluation", "analysis", "study", "case study", "empirical study", "experimentation", "robustness", "evaluating robustness of custom models", "experiment details", "experiment setup", "experiment results"

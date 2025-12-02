@@ -600,18 +600,6 @@ class ExperimentExecutor:
         # Ensure script_path is absolute
         script_path = config.script_path.resolve()
 
-        # --- PATCH: Always add --log-to-csv log.csv for TextAttack runs ---
-        is_textattack = (
-            'textattack' in str(config.script_path).lower() or
-            'textattack' in str(config.working_dir).lower()
-        )
-        if is_textattack:
-            args_lower = [str(a).lower() for a in (config.args or [])]
-            if not any('--log-to-csv' in a for a in args_lower):
-                if config.args is None:
-                    config.args = []
-                config.args += ['--log-to-csv', 'log.csv']
-
 
 
         # Robust venv detection: prefer repo venvs (venv or .venv), fallback to workspace .venv, then system python
