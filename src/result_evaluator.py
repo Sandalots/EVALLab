@@ -1731,8 +1731,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         ax.axis('tight')
         ax.axis('off')
 
-        table = ax.table(cellText=[[summary_data['Metric'][i], summary_data['Value'][i]]
-                                   for i in range(len(summary_data['Metric']))],
+        table = ax.table(cellText=[[metric, value] for metric, value in zip(summary_data['Metric'], summary_data['Value'])],
                          colLabels=['Metric', 'Value'],
                          cellLoc='left',
                          loc='center',

@@ -266,7 +266,7 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
             if actual_path != exp_path and actual_path.exists():
                 try:
                     actual_path.unlink()
-                except:
-                    pass
+                except OSError:
+                    pass  # Ignore cleanup failures
     
     return results

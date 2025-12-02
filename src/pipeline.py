@@ -561,7 +561,7 @@ class ReproductionAgent:
         try:
             self.repo_retriever.paper_path = paper_path
         except Exception:
-            pass
+            pass  # RepoRetriever may not have paper_path attribute in all configurations
 
         codebase_path = self.repo_retriever.retrieve_code(
             github_urls=paper_content.github_urls,
