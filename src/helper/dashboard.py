@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+import html as html_module
 
 def _build_metrics_table_rows(df):
     """
@@ -190,7 +191,6 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         table_html += '</div>'
 
     # Agent log
-    import html as html_module
     log_html = ""
     if 'agent_log' in files and files['agent_log'].exists():
         try:

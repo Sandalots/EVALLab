@@ -11,6 +11,10 @@ from typing import Dict, List, Any
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import re
+import os
+from datetime import datetime
+from src.helper.dashboard import generate_visualization_index_html
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +87,6 @@ class ResultEvaluator:
           3. codebase_path/outputs_all_methods/complete_results.json (fallback)
           4. Recursive search under nearest 'papers' or 'codebases' dirs
         """
-        import os
         
         # 1. Check for paper_metrics.json in experiment directory (manual baseline)
         paper_metrics_path = codebase_path / 'paper_metrics.json'
@@ -191,8 +194,7 @@ class ResultEvaluator:
         """
         Generate a top-level dashboard listing all papers' visualizations.
         """
-        import os
-        from datetime import datetime
+        # Use module-level imports only
         visualizations_root = Path(visualizations_root)
         paper_dirs = [d for d in visualizations_root.iterdir() if d.is_dir()]
         html = f"""<!DOCTYPE html>
@@ -540,7 +542,7 @@ JSON:"""
         Returns:
             Dict mapping config_name -> {metric: value}
         """
-        import re
+        
 
         metrics_by_config = {}
         current_config = None
@@ -600,7 +602,7 @@ JSON:"""
         Normalize metric key for robust comparison.
         Fast path for common cases, comprehensive cleanup for edge cases.
         """
-        import re
+        
         
         # Fast path: check if key needs normalization
         if key and key.islower() and '  ' not in key and '--' not in key and '//' not in key:
@@ -1671,6 +1673,4 @@ Provide a concise analysis (3-4 paragraphs)."""
 
     def _generate_visualization_index(self, files: Dict[str, Path],
                                       df, paper_name: str, output_dir: Path = None) -> str:
-        # Import the new helper function
-        from helper.dashboard import generate_visualization_index_html
         return generate_visualization_index_html(files, df, paper_name, output_dir)

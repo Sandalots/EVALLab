@@ -16,6 +16,8 @@ import os
 import json
 import re
 import requests
+import argparse
+import traceback
 
 from src.paper_parser import PaperParser, PaperContent
 from src.repo_retriever import RepoRetriever
@@ -141,7 +143,7 @@ logger = logging.getLogger(__name__)
 class ReproductionAgent:
     def _extract_metrics_from_text(self, text: str) -> dict:
         """Extract numeric metrics (accuracy, f1, etc.) from a text block using regex."""
-        import re
+        # re is imported at module level; avoid local imports for consistency
         metric_patterns = [
             r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",
             r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)"
@@ -347,7 +349,7 @@ class ReproductionAgent:
         Returns:
             Parsed JSON dictionary
         """
-        import re
+        
         response = self.generate(prompt, system_prompt, temperature=0.1)
 
         # Remove lines that are just '...'
@@ -407,6 +409,7 @@ class ReproductionAgent:
         except json.JSONDecodeError:
             # Try to repair with python-json5 if available
             try:
+                # json5 is optional; import at module scope if used broadly. Keep local if rare.
                 import json5
                 logger.warning("Trying to parse with json5 for more tolerant JSON parsing.")
                 return json5.loads(cleaned_response)
@@ -791,7 +794,7 @@ class ReproductionAgent:
                 Path('outputs') / 'visualizations')
         except Exception as e:
             logger.error(f"Failed to generate visualizations: {e}")
-            import traceback
+            # traceback imported globally; avoid re-import
             traceback.print_exc()
 
         # Save results
@@ -915,7 +918,7 @@ class ReproductionAgent:
 
     def _simple_section_extraction(self, text: str) -> dict:
         """Regex-based section extraction supporting numbered and named headers."""
-        import re
+        # re is imported at module level; avoid local imports for consistency
         sections = {"abstract": "", "methodology": "", "experiments": "", "results": ""}
 
         # Canonical mapping and keyword heuristics (compatible with decontextualisation logic)
@@ -1241,7 +1244,6 @@ class ReproductionAgent:
 
 def main():
     """Main entry point for CLI usage."""
-    import argparse
 
     parser = argparse.ArgumentParser(
         description='Local Research Paper Reproduction Agent - Auto-detects paper and code from workspace'

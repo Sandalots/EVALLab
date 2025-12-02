@@ -7,6 +7,7 @@ Outputs local codebase path for Stage 3 (Experiment Execution).
 """
 
 import logging
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional, List
@@ -95,7 +96,6 @@ class RepoRetriever:
 
         # Priority 3: Check papers/codebases directory (fallback)
         # Only fallback to Decontextualisation codebase if the paper is Decontextualisation
-        import re
         paper_name = None
         if hasattr(self, 'paper_path') and self.paper_path:
             paper_name = str(self.paper_path).lower()
