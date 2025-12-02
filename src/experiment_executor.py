@@ -286,13 +286,13 @@ class ExperimentExecutor:
         if entry_points:
             main_script = entry_points[0]
             try:
-                with open(main_script, 'r', encoding='utf-8') as f:
+                with open(main_script, encoding='utf-8') as f:
                     code = f.read()
                     import_lines = [line for line in code.splitlines() if line.strip(
-                    ).startswith('import') or line.strip().startswith('from')]
+                    ).startswith(('import', 'from'))]
                     import_text = ' '.join(import_lines)
                     dependencies_set = set(dependencies)
-                    for dep in ['numpy', 'matplotlib', 'torch', 'torchvision']:
+                    for dep in ('numpy', 'matplotlib', 'torch', 'torchvision'):
                         if dep in import_text and dep not in dependencies_set:
                             dependencies.append(dep)
                             dependencies_set.add(dep)
@@ -316,13 +316,15 @@ class ExperimentExecutor:
                     self.logger.info(
                         f"✓ Found requirements file: {req_file.name}")
                     try:
-                        with open(req_file, 'r') as f:
+                        with open(req_file) as f:
+                            dependencies_set = set(dependencies)
                             for line in f:
                                 line = line.strip()
                                 if line and not line.startswith('#'):
                                     dep = line.split('#')[0].strip()
-                                    if dep and dep not in dependencies:
+                                    if dep and dep not in dependencies_set:
                                         dependencies.append(dep)
+                                        dependencies_set.add(dep)
                     except Exception as e:
                         self.logger.warning(
                             f"Error reading {req_file.name}: {e}")
@@ -330,7 +332,7 @@ class ExperimentExecutor:
             setup_file = path / 'setup.py'
             if setup_file.exists():
                 try:
-                    with open(setup_file, 'r') as f:
+                    with open(setup_file) as f:
                         content = f.read()
                         if 'install_requires' in content:
                             self.logger.debug(
@@ -343,7 +345,7 @@ class ExperimentExecutor:
                 readme_path = path / 'README.md'
                 if readme_path.exists():
                     try:
-                        with open(readme_path, 'r', encoding='utf-8') as f:
+                        with open(readme_path, encoding='utf-8') as f:
                             readme = f.read().lower()
                             if 'pytorch' in readme or 'torchvision' in readme:
                                 self.logger.info(

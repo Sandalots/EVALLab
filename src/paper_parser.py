@@ -25,8 +25,7 @@ class PaperContent:
     raw_text: str = ""
 
     def __post_init__(self):
-        if self.github_urls is None:
-            self.github_urls = []
+        self.github_urls = self.github_urls or []
 
 
 class PaperParser:
@@ -56,11 +55,7 @@ class PaperParser:
                 pdf_reader = PyPDF2.PdfReader(file)
 
                 # Extract all text
-                text_parts = []
-                for page in pdf_reader.pages:
-                    text_parts.append(page.extract_text())
-
-                content.raw_text = "\n".join(text_parts)
+                content.raw_text = "\n".join(page.extract_text() for page in pdf_reader.pages)
 
                 # Extract GitHub URLs
                 content.github_urls = self._extract_github_urls(

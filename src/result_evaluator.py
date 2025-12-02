@@ -776,12 +776,11 @@ JSON:"""
             ])
 
             # Group by configuration within this experiment set
-            by_config = {}
+            from collections import defaultdict
+            by_config = defaultdict(list)
             for comp in comps:
                 # Get config/model part
                 config = '/'.join(comp.configuration.split('/')[1:4])
-                if config not in by_config:
-                    by_config[config] = []
                 by_config[config].append(comp)
 
         # Best performing configurations (closest to baseline)
@@ -792,7 +791,8 @@ JSON:"""
             "="*80
         ])
 
-        best_configs = {}
+        from collections import defaultdict
+        best_configs = defaultdict(list)
         for comp in comparisons:
             # Only aggregate numeric percent differences
             try:
@@ -800,15 +800,10 @@ JSON:"""
             except (TypeError, ValueError):
                 continue
             config = '/'.join(comp.configuration.split('/')[1:4])
-            if config not in best_configs:
-                best_configs[config] = []
             best_configs[config].append(abs(pct))
 
         # Average percent difference per config
-        config_scores = {
-            k: sum(v) / len(v)
-            for k, v in best_configs.items()
-        }
+        config_scores = {k: sum(v) / len(v) for k, v in best_configs.items()}
 
         for config, avg_diff in sorted(config_scores.items(), key=lambda x: x[1])[:10]:
             report_lines.append(f"  {config}: avg diff = {avg_diff:.2f}%")
@@ -848,11 +843,10 @@ JSON:"""
         summary = "Reproduction results across multiple configurations:\n\n"
 
         # Group by experiment set
-        by_exp = {}
+        from collections import defaultdict
+        by_exp = defaultdict(list)
         for comp in sample:
             exp = comp.configuration.split('/')[0]
-            if exp not in by_exp:
-                by_exp[exp] = []
             by_exp[exp].append(comp)
 
         def _fmt_float(val):
@@ -926,13 +920,12 @@ Provide a concise analysis (3-4 paragraphs)."""
         ]
 
         # Statistics by retriever model (bm25, tfidf, colbert, cross_encoder)
-        by_model = {}
+        from collections import defaultdict
+        by_model = defaultdict(list)
         for comp in comparisons:
             parts = comp.configuration.split('/')
             if len(parts) >= 3:
                 model = parts[2]  # e.g., bm25, tfidf
-                if model not in by_model:
-                    by_model[model] = []
                 by_model[model].append(comp)
 
         lines.append("Performance by Retrieval Model:")
@@ -952,13 +945,12 @@ Provide a concise analysis (3-4 paragraphs)."""
             )
 
         # Statistics by granularity (sentence vs paragraph)
-        by_granularity = {}
+        from collections import defaultdict
+        by_granularity = defaultdict(list)
         for comp in comparisons:
             parts = comp.configuration.split('/')
             if len(parts) >= 2:
                 granularity = parts[1].split('/')[0]  # sentence or paragraph
-                if granularity not in by_granularity:
-                    by_granularity[granularity] = []
                 by_granularity[granularity].append(comp)
 
         lines.append("")
@@ -1053,13 +1045,12 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("-" * 80)
 
         # Analyze by granularity
-        by_granularity = {}
+        from collections import defaultdict
+        by_granularity = defaultdict(list)
         for comp in comparisons:
             parts = comp.configuration.split('/')
             if len(parts) >= 2:
                 gran = parts[1].split('/')[0]
-                if gran not in by_granularity:
-                    by_granularity[gran] = []
                 by_granularity[gran].append(comp)
 
         for gran, comps in sorted(by_granularity.items()):
@@ -1084,11 +1075,10 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         # Analyze by experiment set
         lines.append("\nBy Experiment Set:")
-        by_exp = {}
+        from collections import defaultdict
+        by_exp = defaultdict(list)
         for comp in comparisons:
             exp = comp.configuration.split('/')[0]
-            if exp not in by_exp:
-                by_exp[exp] = []
             by_exp[exp].append(comp)
 
         for exp, comps in sorted(by_exp.items()):
@@ -1199,15 +1189,14 @@ Provide a concise analysis (3-4 paragraphs)."""
         ])
 
         # Best performing configurations
-        best_configs = {}
+        from collections import defaultdict
+        best_configs = defaultdict(list)
         for comp in comparisons:
             try:
                 pct = abs(float(comp.percent_difference))
             except (TypeError, ValueError):
                 continue
             config = '/'.join(comp.configuration.split('/')[1:4])
-            if config not in best_configs:
-                best_configs[config] = []
             best_configs[config].append(pct)
 
         config_scores = {k: sum(v) / len(v) for k, v in best_configs.items()}

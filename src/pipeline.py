@@ -204,8 +204,7 @@ class ReproductionAgent:
 
     def _load_config(self, config_path: Optional[Path]) -> dict:
         """Load configuration from YAML file."""
-        if config_path is None:
-            config_path = Path(__file__).parent.parent / 'configs' / 'global.yaml'
+        config_path = config_path or Path(__file__).parent.parent / 'configs' / 'global.yaml'
 
         if not config_path.exists():
             logger.warning(
