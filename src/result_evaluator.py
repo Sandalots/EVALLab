@@ -51,6 +51,7 @@ class ResultEvaluator:
 
     def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
         """Recursively extract numeric metrics from nested dictionaries, and also include all top-level numeric keys (for flat summary metrics)."""
+        from numbers import Real
         metrics = {}
         for key, value in data.items():
             current_key = f"{prefix}/{key}" if prefix else key
@@ -60,21 +61,21 @@ class ResultEvaluator:
                     for metric_name, metric_value in metric_dict.items():
                         if isinstance(metric_value, dict):
                             for threshold, val in metric_value.items():
-                                if isinstance(val, (int, float)):
+                                if isinstance(val, Real) and not isinstance(val, bool):
                                     full_key = f"{current_key}/{metric_name}@{threshold}"
                                     metrics[full_key] = float(val)
-                        elif isinstance(metric_value, (int, float)):
+                        elif isinstance(metric_value, Real) and not isinstance(metric_value, bool):
                             full_key = f"{current_key}/{metric_name}"
                             metrics[full_key] = float(metric_value)
                 else:
                     nested = self._extract_metrics_from_nested_dict(value, current_key)
                     metrics.update(nested)
-            elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            elif isinstance(value, Real) and not isinstance(value, bool):
                 metrics[current_key] = float(value)
         # Also add all top-level numeric keys for flat summary metrics
-        if prefix == "" and isinstance(data, dict):
+        if not prefix and isinstance(data, dict):
             for key, value in data.items():
-                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if isinstance(value, Real) and not isinstance(value, bool):
                     metrics[key] = float(value)
         return metrics
 
@@ -317,14 +318,14 @@ class ResultEvaluator:
 
         def count_recursive(data):
             nonlocal count
-            if isinstance(data, dict):
-                if 'metrics' in data:
-                    for v in data['metrics'].values():
-                        if isinstance(v, dict):
-                            count += len(v)  # e.g., recall@1, recall@5, etc.
-                        else:
-                            count += 1
-                else:
+            if isinstance(data, dict) and 'metrics' in data:
+                for v in data['metrics'].values():
+                    if isinstance(v, dict):
+                        count += len(v)  # e.g., recall@1, recall@5, etc.
+                    else:
+                        count += 1
+            else:
+                if isinstance(data, dict):
                     for v in data.values():
                         count_recursive(v)
 
@@ -1362,22 +1363,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Convert comparisons to DataFrame
-        data = []
-        for comp in comparisons:
-            parts = comp.configuration.split('/')
-            # Unpack with defaults using extended unpacking
-            exp_set, *rest = parts or ['unknown']
-            granularity = rest[0] if len(rest) > 0 else "unknown"
-            strategy = rest[1] if len(rest) > 1 else "unknown"
-            task_type = rest[2] if len(rest) > 2 else "unknown"
-            retriever = rest[3] if len(rest) > 3 else "unknown"
-
-            data.append({
-                'experiment_set': exp_set,
-                'granularity': granularity,
-                'strategy': strategy,
-                'task_type': task_type,
-                'retriever': retriever,
+        data = [
+            {
+                'experiment_set': (parts := comp.configuration.split('/'))[0] if parts else 'unknown',
+                'granularity': parts[1] if len(parts) > 1 else 'unknown',
+                'strategy': parts[2] if len(parts) > 2 else 'unknown',
+                'task_type': parts[3] if len(parts) > 3 else 'unknown',
+                'retriever': parts[4] if len(parts) > 4 else 'unknown',
                 'metric_name': comp.metric_name,
                 'baseline_value': comp.baseline_value,
                 'reproduced_value': comp.reproduced_value,
@@ -1385,7 +1377,9 @@ Provide a concise analysis (3-4 paragraphs)."""
                 'percent_difference': comp.percent_difference,
                 'within_threshold': comp.within_threshold,
                 'configuration': comp.configuration
-            })
+            }
+            for comp in comparisons
+        ]
 
         df = pd.DataFrame(data)
         

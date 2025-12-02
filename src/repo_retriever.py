@@ -222,19 +222,18 @@ class RepoRetriever:
             clone_dir = self.workspace_root / "papers" / "codebases" / repo_name
 
             # Skip if already cloned and looks valid
-            if clone_dir.exists():
-                if self._looks_like_code_dir(clone_dir):
-                    logger.info(f"✓ Repository already exists: {clone_dir}")
-                    logger.info(
-                        f"   Skipping clone (delete directory to re-clone)")
-                    return clone_dir
-                else:
-                    # Directory exists but is empty/invalid - remove and re-clone
-                    logger.warning(
-                        f"Found invalid clone directory, removing: {clone_dir}")
-                    import shutil
-                    shutil.rmtree(clone_dir)
-                    logger.info(f"Re-cloning repository...")
+            if clone_dir.exists() and self._looks_like_code_dir(clone_dir):
+                logger.info(f"✓ Repository already exists: {clone_dir}")
+                logger.info(
+                    f"   Skipping clone (delete directory to re-clone)")
+                return clone_dir
+            elif clone_dir.exists():
+                # Directory exists but is empty/invalid - remove and re-clone
+                logger.warning(
+                    f"Found invalid clone directory, removing: {clone_dir}")
+                import shutil
+                shutil.rmtree(clone_dir)
+                logger.info(f"Re-cloning repository...")
 
             # Create parent directory
             clone_dir.parent.mkdir(parents=True, exist_ok=True)

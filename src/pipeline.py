@@ -1034,7 +1034,7 @@ class ReproductionAgent:
                                 if isinstance(val, (int, float)):
                                     metrics[f"{metric_name}@{threshold}"] = float(
                                         val)
-                        elif isinstance(metric_value, (int, float)):
+                        elif isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
                             metrics[metric_name] = float(metric_value)
                 else:
                     # Recurse into nested dicts
