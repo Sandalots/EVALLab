@@ -123,7 +123,7 @@ def get_repo_config(repo_path: Path) -> Optional[RepoConfig]:
 
 def list_supported_repos() -> List[str]:
     """Return list of supported repository names."""
-    return list(REPO_REGISTRY.keys())
+    return sorted(REPO_REGISTRY.keys())
 
 
 # ============================================================================

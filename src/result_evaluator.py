@@ -129,7 +129,7 @@ class ResultEvaluator:
             papers_dir = current / 'papers'
             logger.debug(f"[DEBUG] Searching for paper_metrics.json in: {codebases_dir} and {papers_dir} (level {level})")
             for d in [codebases_dir, papers_dir]:
-                if d.exists() and d.is_dir():
+                if d.is_dir():
                     logger.debug(f"[DEBUG] Directory exists: {d}, searching recursively for paper_metrics.json")
                     for root, dirs, files in os.walk(d):
                         logger.debug(f"[DEBUG] Checking directory: {root}")
@@ -432,7 +432,7 @@ JSON:"""
             for key, value in metrics_dict.items():
                 if isinstance(value, (int, float)):
                     # Normalize metric names
-                    clean_key = key.lower().replace(' ', '_').replace('-', '_')
+                    clean_key = key.lower().translate(str.maketrans(' -', '__'))
                     cleaned_metrics[clean_key] = float(value)
 
             if not cleaned_metrics:
@@ -557,14 +557,13 @@ JSON:"""
                 metrics_by_config[current_config] = {}
                 continue
 
-            # Detect task type sections
-            if current_config:
-                if '**Retrieval Performance:**' in line:
-                    current_task_type = 'retrieval'
-                    continue
-                elif '**Downstream Tasks:**' in line:
-                    current_task_type = 'downstream'
-                    continue
+            # Detect task type sections and handle retrieval/downstream
+            if current_config and '**Retrieval Performance:**' in line:
+                current_task_type = 'retrieval'
+                continue
+            elif current_config and '**Downstream Tasks:**' in line:
+                current_task_type = 'downstream'
+                continue
 
             if current_config and current_task_type:
                 retrieval_match = re.search(
@@ -611,7 +610,7 @@ JSON:"""
         
         # Comprehensive normalization for complex cases
         # Lowercase and basic replacements
-        key = key.lower().replace('-', '_').replace(' ', '').replace('@', '_at_')
+        key = key.lower().translate(str.maketrans({'-': '_', ' ': '', '@': '_at_'}))
         
         # Remove ANSI sequences (rare, but handle once)
         if '\x1b' in key or any(c.isdigit() for c in key[-3:]):
@@ -670,8 +669,9 @@ JSON:"""
 
         # Debug logging (only if enabled)
         if logger.isEnabledFor(logging.DEBUG) and len(norm_baseline) < 20:
-            logger.debug(f"Baseline keys sample: {list(norm_baseline.keys())[:10]}")
-            logger.debug(f"Reproduced keys sample: {list(norm_reproduced.keys())[:10]}")
+            from itertools import islice
+            logger.debug(f"Baseline keys sample: {list(islice(norm_baseline.keys(), 10))}")
+            logger.debug(f"Reproduced keys sample: {list(islice(norm_reproduced.keys(), 10))}")
 
         matched_count = 0
         unmatched_baseline = []
@@ -1114,7 +1114,8 @@ Provide a concise analysis (3-4 paragraphs)."""
                 return abs(float(x.percent_difference))
             except (TypeError, ValueError):
                 return -float('inf')
-        worst_metrics = sorted(comparisons, key=_safe_abs_pct_worst, reverse=True)[:5]
+        from heapq import nlargest
+        worst_metrics = nlargest(5, comparisons, key=_safe_abs_pct_worst)
 
         lines.append("\nTop Issues Identified:")
         for i, comp in enumerate(worst_metrics, 1):

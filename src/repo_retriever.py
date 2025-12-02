@@ -72,7 +72,7 @@ class RepoRetriever:
                 # If supplementary_material or decontextualization, prefer 'code' subdir if present
                 if local_path.name in ['supplementary_material', 'decontextualization']:
                     code_dir = local_path / 'code'
-                    if code_dir.exists() and code_dir.is_dir():
+                    if code_dir.is_dir():
                         logger.info(
                             f"✓ Using 'code' directory in {local_path.name}: {code_dir}")
                         return code_dir

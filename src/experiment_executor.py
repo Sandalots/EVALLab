@@ -812,7 +812,7 @@ class ExperimentExecutor:
                         # Handle model-prefixed metrics (3 groups)
                         if len(m.groups()) == 3 and m.group(1).upper() in ['KNN', 'SVM', 'RF', 'LR']:
                             model = m.group(1).lower()
-                            metric = m.group(2).lower().replace(' ', '_').replace('-', '_')
+                            metric = m.group(2).lower().translate(str.maketrans(' -', '__'))
                             key = f"{model}_{metric}"
                             try:
                                 val = float(m.group(3))
@@ -821,7 +821,7 @@ class ExperimentExecutor:
                                 continue
                         else:
                             # Standard metric (2 groups)
-                            key = m.group(1).lower().replace(' ', '_').replace('-', '_')
+                            key = m.group(1).lower().translate(str.maketrans(' -', '__'))
                             try:
                                 val = float(m.group(2))
                                 metrics[key] = val

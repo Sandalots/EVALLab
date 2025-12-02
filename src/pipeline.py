@@ -154,7 +154,7 @@ class ReproductionAgent:
             for pat in metric_patterns:
                 m = re.search(pat, line, re.IGNORECASE)
                 if m:
-                    key = m.group(1).lower().replace(' ', '_').replace('-', '_')
+                    key = m.group(1).lower().translate(str.maketrans(' -', '__'))
                     try:
                         val = float(m.group(2))
                         metrics[key] = val
@@ -200,7 +200,7 @@ class ReproductionAgent:
 
         # Create output directory
         self.output_dir = Path(self.config['paths']['output_dir'])
-        self.output_dir.mkdir(exist_ok=True, parents=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _load_config(self, config_path: Optional[Path]) -> dict:
         """Load configuration from YAML file."""
@@ -570,11 +570,11 @@ class ReproductionAgent:
             print("\033[91m│\033[0m" + " Checked:".ljust(78) + "\033[91m│\033[0m")
 
             if local_path:
-                print("".join(["\033[91m│\033[0m", f"   ✗ User path: {local_path}".ljust(78), "\033[91m│\033[0m"]))
-            print("".join(["\033[91m│\033[0m", "   ✗ Local directory: ./papers/codebases/".ljust(78), "\033[91m│\033[0m"]))
+                print("\033[91m│\033[0m" + f"   ✗ User path: {local_path}".ljust(78) + "\033[91m│\033[0m")
+            print("\033[91m│\033[0m" + "   ✗ Local directory: ./papers/codebases/".ljust(78) + "\033[91m│\033[0m")
 
             if paper_content.github_urls:
-                print("".join(["\033[91m│\033[0m", f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(78), "\033[91m│\033[0m"]))
+                print("\033[91m│\033[0m" + f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(78) + "\033[91m│\033[0m")
             else:
                 print("\033[91m│\033[0m" + "   ✗ GitHub URLs: None found in paper".ljust(78) + "\033[91m│\033[0m")
 
@@ -1067,13 +1067,14 @@ class ReproductionAgent:
             # Look for python commands in README
             python_cmds = re.findall(r'python[3]?\s+([\w_/\.]+\.py)(?:\s+(.*))?',
                                      codebase_info.readme_content, re.IGNORECASE)
+            import shlex
             for script_name, args in python_cmds:
                 script_path = codebase_info.path / script_name
                 if script_path.exists():
                     logger.info(
                         f"Found priority script from README: {script_name}")
                     priority_scripts.append(
-                        (script_path, args.strip().split() if args else []))
+                        (script_path, shlex.split(args) if args else []))
 
         results = []
 
