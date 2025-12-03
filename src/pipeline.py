@@ -828,12 +828,9 @@ class ReproductionAgent:
         print("\033[92m│\033[0m" +
               "\033[1;92m ✅ WORKFLOW COMPLETED SUCCESSFULLY!".center(78) + "\033[92m│\033[0m")
         print("\033[92m├" + "─"*78 + "┤\033[0m")
-        print("\033[92m│\033[0m" +
-              " 🎉 All 4 stages completed".ljust(78) + "\033[92m│\033[0m")
-        print("\033[92m│\033[0m" +
-              " 📁 Results saved to outputs/ directory".ljust(78) + "\033[92m│\033[0m")
-        print("\033[92m│\033[0m" +
-              " 📊 Visualizations available in outputs/visualizations/".ljust(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" + " 🎉 All 4 EVALLab tages completed".ljust(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" +" 📁 Results saved to outputs/ directory".ljust(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" +" 📊 Visualizations available in outputs/visualizations/".ljust(78) + "\033[92m│\033[0m")
         print("\033[92m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
