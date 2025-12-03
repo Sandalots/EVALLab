@@ -674,9 +674,18 @@ class ReproductionAgent:
         print("\033[96m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
-        # Load ALL experiment results from all output directories (directory-based discovery)
+        # Auto-generate repo config hints from filesystem and save YAML
+        from src.helper.repo_config import generate_repo_config_from_filesystem, save_repo_config
+        repo_config = generate_repo_config_from_filesystem(codebase_info.path)
+        try:
+            save_repo_config(repo_config, None)
+            logger.info(f"✓ Auto-generated repo config for {repo_config.name}")
+        except Exception:
+            logger.warning("Could not save auto-generated repo config")
+
+        # Load ALL experiment results from all output directories, with repo_config hints
         experiment_sets = self.result_evaluator.load_all_experiment_results(
-            codebase_info.path)
+            codebase_info.path, repo_config=repo_config)
 
         if not experiment_sets:
             logger.error("No experiment result sets found")
@@ -690,10 +699,11 @@ class ReproductionAgent:
         logger.info(
             f"✓ Extracted {len(all_reproduced_metrics)} total metrics from all experiments")
 
-        # Extract baseline from report.md files (prefer outputs_all_methods/report.md)
+        # Extract baseline (prefer hinted report file, else report.md discovery)
         baseline = self.result_evaluator.extract_baseline_from_paper(
             paper_content.results or paper_content.raw_text,
-            codebase_path=codebase_info.path
+            codebase_path=codebase_info.path,
+            repo_config=repo_config
         )
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")

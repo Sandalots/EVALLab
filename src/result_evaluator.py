@@ -270,6 +270,28 @@ class ResultEvaluator:
         """
         experiment_sets = []
 
+        # If repo_config hints a results_file, include it as an extra set
+        if repo_config and hasattr(repo_config, 'outputs'):
+            results_file = repo_config.outputs.get('results_file') if isinstance(repo_config.outputs, dict) else None
+            if results_file:
+                hinted_path = codebase_path / results_file
+                if hinted_path.exists():
+                    try:
+                        with open(hinted_path, 'r') as f:
+                            results = json.load(f)
+                        total_configs = len(results)
+                        total_metrics = self._count_metrics_in_results(results)
+                        set_name = hinted_path.parent.name if hinted_path.parent != codebase_path else "root"
+                        experiment_sets.append(ExperimentSet(
+                            name=set_name,
+                            results=results,
+                            total_configs=total_configs,
+                            total_metrics=total_metrics
+                        ))
+                        logger.info(f"✓ Loaded hinted results: {set_name} ({results_file})")
+                    except Exception as e:
+                        logger.warning(f"Failed to load hinted results from {hinted_path}: {e}")
+
         # Check for complete_results.json in the root of the codebase
         root_results_path = codebase_path / "complete_results.json"
         if root_results_path.exists() and not any(es.name == "root" for es in experiment_sets):
@@ -376,7 +398,21 @@ class ResultEvaluator:
         Returns:
             BaselineMetrics with extracted values
         """
-        # PRIORITY 1: Parse report.md files in outputs directories (paper's reported baselines)
+        # PRIORITY 1: If repo_config hints a report_file, prefer parsing it first
+        if repo_config and hasattr(repo_config, 'outputs') and codebase_path:
+            report_file = repo_config.outputs.get('report_file') if isinstance(repo_config.outputs, dict) else None
+            if report_file:
+                report_path = codebase_path / report_file
+                if report_path.exists():
+                    try:
+                        metrics = self._parse_single_report_file(report_path)
+                        if metrics:
+                            logger.info(f"✓ Using hinted report file: {report_file}")
+                            return BaselineMetrics(metrics=metrics, source=f"Parsed from {report_file} (repo_config hint)")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse hinted report {report_file}: {e}")
+
+        # PRIORITY 2: Parse report.md files in outputs directories (paper's reported baselines)
         # This represents the paper's reported baselines, not the reproduced results
         if codebase_path:
             metrics = self._parse_report_files(codebase_path)

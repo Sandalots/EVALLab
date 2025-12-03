@@ -399,6 +399,75 @@ def save_repo_config(config: RepoConfig, output_path: Optional[Path] = None) -> 
         return False
 
 
+def generate_repo_config_from_filesystem(codebase_path: Path) -> RepoConfig:
+    """Generate a minimal RepoConfig by inspecting the filesystem (no LLM required).
+
+    - Detect entry script under `code/` if present, else top-level scripts
+    - Detect output directories with `complete_results.json`
+    - Prefer `outputs_all_methods` paths for results/report hints
+    """
+    repo_name = codebase_path.name
+
+    # Determine prefix if codebase_path is a 'code' directory
+    prefix = ""
+    if codebase_path.name == "code":
+        prefix = "code/"
+
+    # Find entry script
+    entry_candidates = ["main_local_all_new.py", "main.py", "run.py", "experiment.py"]
+    entry_point = None
+    for name in entry_candidates:
+        candidate = codebase_path / name
+        if candidate.exists():
+            entry_point = f"{prefix}{name}"
+            break
+
+    # Detect outputs dirs
+    outputs_dirs = [d for d in codebase_path.iterdir() if d.is_dir() and (d / "complete_results.json").exists()]
+    # Choose primary methods dir
+    methods_dir = (
+        next((d for d in outputs_dirs if d.name == "outputs_all_methods"), None)
+        or next((d for d in outputs_dirs if "methods" in d.name), None)
+    )
+
+    results_file = None
+    report_file = None
+    if methods_dir:
+        if (methods_dir / "complete_results.json").exists():
+            results_file = f"{prefix}{methods_dir.name}/complete_results.json"
+        if (methods_dir / "report.md").exists():
+            report_file = f"{prefix}{methods_dir.name}/report.md"
+
+    outputs = {}
+    if results_file:
+        outputs["results_file"] = results_file
+    if report_file:
+        outputs["report_file"] = report_file
+
+    experiments = []
+    if entry_point:
+        experiments.append({
+            "name": "main_experiment",
+            "type": "python_script",
+            "path": entry_point,
+            "args": [],
+            "timeout": 1800,
+            "description": "Auto-detected entry point"
+        })
+
+    return RepoConfig(
+        name=repo_name,
+        path_pattern=repo_name.lower(),
+        dependencies=[],
+        pre_run_setup=[],
+        experiments=experiments,
+        baseline={"save_baseline": True, "baseline_file": "paper_metrics.json"},
+        metrics={"per_example": False, "extractors": []},
+        outputs=outputs,
+        data_validation={"data_dir": "data", "required_files": []}
+    )
+
+
 def get_repo_config(repo_path: Path) -> Optional[RepoConfig]:
     """
     Match a repo path to a configuration.
