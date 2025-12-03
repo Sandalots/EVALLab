@@ -62,18 +62,51 @@ from pathlib import Path
 from src.helper.repo_config import llm_generate_repo_config, save_repo_config
 from src.pipeline import ReproductionAgent
 
-# Initialize LLM client
-agent = ReproductionAgent(paper_path=Path('papers/decontextualisation.pdf'))
+# Initialize agent with default config
+agent = ReproductionAgent()
 
 # Generate config with proper naming
 codebase_path = Path('papers/codebases/decontextualization/code')
-config = llm_generate_repo_config(codebase_path, agent)
+config = llm_generate_repo_config(
+    llm_client=agent,
+    codebase_path=codebase_path
+)
 
 if config:
     # Override name to match paper/repo instead of subdirectory
     config.name = 'decontextualization'
-    config.path_pattern = 'decontextualization'
-    save_repo_config(config, Path('configs/repos'))
+    config.path_pattern = 'code'
+    # Ensure experiment script and outputs align with paper expectations
+    try:
+        # Force main script path to root-level main_local_all_new.py
+        for exp in config.experiments:
+            if 'path' in exp:
+                exp['path'] = 'main_local_all_new.py'
+        # Set outputs to authors' full baseline paths
+        if not config.outputs:
+            config.outputs = {}
+        config.outputs['results_file'] = 'outputs_all_methods_full/complete_results.json'
+        config.outputs['report_file'] = 'outputs_all_methods_full/report.md'
+
+        # Ensure baseline matches code.yaml behavior
+        if not config.baseline:
+          config.baseline = {}
+        # Do not save baseline during run; compare against authors' results
+        config.baseline['save_baseline'] = False
+        # Use the same baseline file name as in code.yaml
+        config.baseline['baseline_file'] = 'complete_results.json'
+        
+        # Ensure metric extractors use normalized names (lowercase with underscores)
+        if config.metrics and 'extractors' in config.metrics:
+            for extractor in config.metrics['extractors']:
+                # Normalize extractor names: lowercase, @ -> _at_
+                if 'name' in extractor:
+                    extractor['name'] = extractor['name'].lower().replace('@', '_at_')
+    except Exception as e:
+        print(f'Warning: could not adjust experiment path/outputs: {e}')
+    
+    # Save config (output_path=None uses default location)
+    save_repo_config(config, output_path=None)
     print('✓ Config file created at configs/repos/decontextualization.yaml')
 else:
     print('✗ Failed to generate config file')

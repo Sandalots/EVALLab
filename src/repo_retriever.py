@@ -135,14 +135,15 @@ class RepoRetriever:
                             logger.warning("Codebase fetch script ran but no code directory was found.")
                 except subprocess.CalledProcessError as e:
                     logger.error(f"Failed to run get_codebase.sh: {e}")
-                # If fetch fails, fallback to normal cloning below
-
-            cloned_path = self._clone_github_repo(github_urls[0])
-            if cloned_path:
-                logger.info(f"✓ Using paper-specific GitHub repository")
-                return cloned_path
-
-        # Priority 3: Check papers/codebases directory (fallback)
+                # If fetch fails or no code found, skip other GitHub URLs and try fallback
+                # Do not attempt to clone EVALLab repo or other URLs
+                logger.info("Skipping other GitHub URLs; searching for local codebase...")
+            else:
+                # Only clone non-EVALLab repos
+                cloned_path = self._clone_github_repo(github_urls[0][0])
+                if cloned_path:
+                    logger.info(f"✓ Using paper-specific GitHub repository")
+                    return cloned_path        # Priority 3: Check papers/codebases directory (fallback)
         # Try LLM-based semantic matching if available
         if self.llm_client and self.paper_path:
             logger.info("Attempting LLM-based semantic codebase matching...")
