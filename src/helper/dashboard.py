@@ -237,10 +237,10 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         <h1>EVALLab's Research Paper Reproducibility Analysis</h1>
         <h2>Research Paper: {paper_name}</h2>
         {metrics_html}
+        {table_html}
         {viz_html}
         {per_example_html}
         {metrics_iframe_html}
-        {table_html}
         {log_html}
         {footer_html}
     </body>

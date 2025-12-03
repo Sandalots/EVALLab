@@ -121,9 +121,7 @@ def get_repo_config(repo_path: Path) -> Optional[RepoConfig]:
     return None
 
 
-def list_supported_repos() -> List[str]:
-    """Return list of supported repository names."""
-    return sorted(REPO_REGISTRY.keys())
+# Removed unused function: list_supported_repos
 
 
 # ============================================================================

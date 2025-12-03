@@ -24,46 +24,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
-def ensure_module_in_venv(venv_python: str, module_name: str, package_name: Optional[str] = None, timeout: int = 600) -> bool:
-    """Ensure a Python module is importable in the given venv.
-
-    If not present, attempt to install via pip using `package_name` (or `module_name` if omitted).
-    Returns True if the module is available after the operation, else False.
-    """
-    check_code = (
-        "import importlib.util; "
-        f"print(importlib.util.find_spec('{module_name}') is not None)"
-    )
-
-    try:
-        result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
-        available = result.stdout.strip().splitlines()[0].strip() == 'True'
-        
-    except (subprocess.SubprocessError, OSError):
-        available = False
-
-    if available:
-        return True
-    
-    # Try install
-    pkg = package_name or module_name
-
-    try:
-        subprocess.run([venv_python, "-m", "pip", "install", pkg], check=True, capture_output=True, text=True, timeout=timeout)
-    except subprocess.CalledProcessError as e:
-        logger.warning(f"Failed to install {pkg} in venv: {e.stderr}")
-        return False
-    
-    except subprocess.TimeoutExpired:
-        logger.warning(f"Timeout installing {pkg} in venv after {timeout/60:.0f} minutes")
-        return False
-    
-    # Re-check
-    try:
-        result = subprocess.run([venv_python, "-c", check_code], capture_output=True, text=True)
-        return result.stdout.strip().splitlines()[0].strip() == 'True'
-    except (subprocess.SubprocessError, OSError):
-        return False
+# Removed unused function: ensure_module_in_venv
 
 def _get_python_executable():
     """Get the appropriate Python executable for the current platform."""
