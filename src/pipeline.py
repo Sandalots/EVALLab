@@ -482,13 +482,10 @@ class ReproductionAgent:
         # Step 2: Parse the paper (Stage 1)
         print("\n" + "="*80)
         print("\033[94m┌" + "─"*78 + "┐\033[0m")
-        print("\033[94m│\033[0m" +
-              "\033[1;96m STAGE 1/4: PAPER PARSING".center(78) + "\033[94m│\033[0m")
+        print("\033[94m│\033[0m" + "\033[1;96m STAGE 1/4: PAPER PARSING".center(78) + "\033[94m│\033[0m")
         print("\033[94m├" + "─"*78 + "┤\033[0m")
-        print("\033[94m│\033[0m" +
-              " 📄 Extracting text, figures, and GitHub URLs from PDF".ljust(78) + "\033[94m│\033[0m")
-        print("\033[94m│\033[0m" +
-              " 🔍 Parsing paper structure and metadata".ljust(78) + "\033[94m│\033[0m")
+        print("\033[94m│\033[0m" + " 📄 Extracting text, figures, and GitHub URLs from PDF".ljust(78) + "\033[94m│\033[0m")
+        print("\033[94m│\033[0m" + " 🔍 Parsing paper structure and metadata".ljust(78) + "\033[94m│\033[0m")
         print("\033[94m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
@@ -505,13 +502,10 @@ class ReproductionAgent:
         # Step 3: Extract key sections using LLM
         print("\n" + "="*80)
         print("\033[93m┌" + "─"*78 + "┐\033[0m")
-        print("\033[93m│\033[0m" +
-              "\033[1;93m STAGE 1.5/4: EVALLAB SECTION EXTRACTION".center(78) + "\033[93m│\033[0m")
+        print("\033[93m│\033[0m" + "\033[1;93m STAGE 1.5/4: EVALLAB SECTION EXTRACTION".center(78) + "\033[93m│\033[0m")
         print("\033[93m├" + "─"*78 + "┤\033[0m")
-        print("\033[93m│\033[0m" +
-              " 🤖 Using Ollama LLM to extract key sections".ljust(78) + "\033[93m│\033[0m")
-        print("\033[93m│\033[0m" +
-              " 📝 Identifying: Abstract, Methodology, Experiments, Results".ljust(78) + "\033[93m│\033[0m")
+        print("\033[93m│\033[0m" + " 🤖 Using Ollama LLM to extract key sections".ljust(78) + "\033[93m│\033[0m")
+        print("\033[93m│\033[0m" + " 📝 Identifying: Abstract, Methodology, Experiments, Results".ljust(78) + "\033[93m│\033[0m")
         print("\033[93m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
@@ -604,24 +598,18 @@ class ReproductionAgent:
         # Step 5: Analyze codebase structure (Stage 3 - UNIFIED ANALYSIS & EXECUTION)
         print("\n" + "="*80)
         print("\033[95m┌" + "─"*78 + "┐\033[0m")
-        print("\033[95m│\033[0m" +
-              "\033[1;95m STAGE 3/4: EXPERIMENT EXECUTION".center(78) + "\033[95m│\033[0m")
+        print("\033[95m│\033[0m" + "\033[1;95m STAGE 3/4: EXPERIMENT EXECUTION".center(78) + "\033[95m│\033[0m")
         print("\033[95m├" + "─"*78 + "┤\033[0m")
-        print("\033[95m│\033[0m" +
-              " 🔬 Analyzing codebase structure and dependencies".ljust(78) + "\033[95m│\033[0m")
-        print("\033[95m│\033[0m" +
-              " ⚙️  Setting up environment and validating data".ljust(78) + "\033[95m│\033[0m")
-        print("\033[95m│\033[0m" +
-              " 🚀 Running experiments with reproducible seeds".ljust(78) + "\033[95m│\033[0m")
+        print("\033[95m│\033[0m" + " 🔬 Analyzing codebase structure and dependencies".ljust(78) + "\033[95m│\033[0m")
+        print("\033[95m│\033[0m" + " ⚙️  Setting up environment and validating data".ljust(78) + "\033[95m│\033[0m")
+        print("\033[95m│\033[0m" +  " 🚀 Running experiments with reproducible seeds".ljust(78) + "\033[95m│\033[0m")
         print("\033[95m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
         codebase_info = self.experiment_executor.analyze_codebase(
             codebase_path)
-        logger.info(
-            f"✓ Analyzed codebase (language: {codebase_info.language})")
-        logger.info(
-            f"✓ Found {len(codebase_info.entry_points)} potential entry points")
+        logger.info(f"✓ Analyzed codebase (language: {codebase_info.language})")
+        logger.info(f"✓ Found {len(codebase_info.entry_points)} potential entry points")
         logger.info(f"✓ Found {len(codebase_info.dependencies)} dependencies")
 
         # Get repo-specific configuration for validation
@@ -662,15 +650,11 @@ class ReproductionAgent:
         # Step 6: Evaluate results (Stage 4)
         print("\n" + "="*80)
         print("\033[96m┌" + "─"*78 + "┐\033[0m")
-        print("\033[96m│\033[0m" +
-              "\033[1;96m STAGE 4/4: RESULT EVALUATION".center(78) + "\033[96m│\033[0m")
+        print("\033[96m│\033[0m" + "\033[1;96m STAGE 4/4: RESULT EVALUATION".center(78) + "\033[96m│\033[0m")
         print("\033[96m├" + "─"*78 + "┤\033[0m")
-        print("\033[96m│\033[0m" +
-              " 📊 Comparing reproduced metrics to baseline results".ljust(78) + "\033[96m│\033[0m")
-        print("\033[96m│\033[0m" +
-              " 📈 Generating visualizations and performance reports".ljust(78) + "\033[96m│\033[0m")
-        print("\033[96m│\033[0m" +
-              " ✅ Calculating success rate and deviation metrics".ljust(78) + "\033[96m│\033[0m")
+        print("\033[96m│\033[0m" + " 📊 Comparing reproduced metrics to baseline results".ljust(78) + "\033[96m│\033[0m")
+        print("\033[96m│\033[0m" + " 📈 Generating visualizations and performance reports".ljust(78) + "\033[96m│\033[0m")
+        print("\033[96m│\033[0m" + " ✅ Calculating success rate and deviation metrics".ljust(78) + "\033[96m│\033[0m")
         print("\033[96m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
@@ -720,13 +704,10 @@ class ReproductionAgent:
         # Generate summary statistics
         print("\n" + "="*80)
         print("\033[93m┌" + "─"*78 + "┐\033[0m")
-        print("\033[93m│\033[0m" +
-              "\033[1;93m 📊 SUMMARY STATISTICS".center(78) + "\033[93m│\033[0m")
+        print("\033[93m│\033[0m" + "\033[1;93m 📊 SUMMARY STATISTICS".center(78) + "\033[93m│\033[0m")
         print("\033[93m├" + "─"*78 + "┤\033[0m")
-        print("\033[93m│\033[0m" +
-              " 📈 Performance metrics and success rates".ljust(78) + "\033[93m│\033[0m")
-        print("\033[93m│\033[0m" +
-              " 🎯 Deviation analysis and accuracy scores".ljust(78) + "\033[93m│\033[0m")
+        print("\033[93m│\033[0m" + " 📈 Performance metrics and success rates".ljust(78) + "\033[93m│\033[0m")
+        print("\033[93m│\033[0m" + " 🎯 Deviation analysis and accuracy scores".ljust(78) + "\033[93m│\033[0m")
         print("\033[93m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
@@ -745,10 +726,8 @@ class ReproductionAgent:
             print("\033[94m│\033[0m" +
                   "\033[1;94m 🤖 EVALLAB ANALYSIS".center(78) + "\033[94m│\033[0m")
             print("\033[94m├" + "─"*78 + "┤\033[0m")
-            print("\033[94m│\033[0m" +
-                  " 🧠 AI-powered analysis of result differences".ljust(78) + "\033[94m│\033[0m")
-            print("\033[94m│\033[0m" +
-                  " 💡 Insights into methodology and experiment variations".ljust(78) + "\033[94m│\033[0m")
+            print("\033[94m│\033[0m" + " 🧠 AI-powered analysis of result differences".ljust(78) + "\033[94m│\033[0m")
+            print("\033[94m│\033[0m" + " 💡 Insights into methodology and experiment variations".ljust(78) + "\033[94m│\033[0m")
             print("\033[94m└" + "─"*78 + "┘\033[0m")
             print("="*80 + "\n")
 
@@ -828,8 +807,7 @@ class ReproductionAgent:
 
         print("\n" + "="*80)
         print("\033[92m┌" + "─"*78 + "┐\033[0m")
-        print("\033[92m│\033[0m" +
-              "\033[1;92m ✅ WORKFLOW COMPLETED SUCCESSFULLY!".center(78) + "\033[92m│\033[0m")
+        print("\033[92m│\033[0m" + "\033[1;92m ✅ WORKFLOW COMPLETED SUCCESSFULLY!".center(78) + "\033[92m│\033[0m")
         print("\033[92m├" + "─"*78 + "┤\033[0m")
         print("\033[92m│\033[0m" + " 🎉 All 4 EVALLab Stages completed".ljust(78) + "\033[92m│\033[0m")
         print("\033[92m│\033[0m" +" 📁 Results saved to outputs/ directory".ljust(78) + "\033[92m│\033[0m")
