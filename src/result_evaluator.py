@@ -51,7 +51,6 @@ class ResultEvaluator:
 
     def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
         """Recursively extract numeric metrics from nested dictionaries, and also include all top-level numeric keys (for flat summary metrics)."""
-        from numbers import Real
         metrics = {}
         for key, value in data.items():
             current_key = f"{prefix}/{key}" if prefix else key
@@ -61,21 +60,21 @@ class ResultEvaluator:
                     for metric_name, metric_value in metric_dict.items():
                         if isinstance(metric_value, dict):
                             for threshold, val in metric_value.items():
-                                if isinstance(val, Real) and not isinstance(val, bool):
+                                if isinstance(val, (int, float)) and not isinstance(val, bool):
                                     full_key = f"{current_key}/{metric_name}@{threshold}"
                                     metrics[full_key] = float(val)
-                        elif isinstance(metric_value, Real) and not isinstance(metric_value, bool):
+                        elif isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
                             full_key = f"{current_key}/{metric_name}"
                             metrics[full_key] = float(metric_value)
                 else:
                     nested = self._extract_metrics_from_nested_dict(value, current_key)
                     metrics.update(nested)
-            elif isinstance(value, Real) and not isinstance(value, bool):
+            elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 metrics[current_key] = float(value)
         # Also add all top-level numeric keys for flat summary metrics
         if not prefix and isinstance(data, dict):
             for key, value in data.items():
-                if isinstance(value, Real) and not isinstance(value, bool):
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
                     metrics[key] = float(value)
         return metrics
 
@@ -261,44 +260,17 @@ class ResultEvaluator:
 
     def load_all_experiment_results(self, codebase_path: Path, repo_config=None) -> List[ExperimentSet]:
         """
-        Load results from all output directories, or from the root if present.
-        If repo_config is provided, prioritize the intelligently discovered output paths.
+        Load results from the root and all sibling output directories containing complete_results.json.
 
         Args:
             codebase_path: Path to codebase
-            repo_config: Optional repository configuration with output paths
 
         Returns:
             List of ExperimentSet objects
         """
         experiment_sets = []
 
-        # Priority 1: Check repo_config for intelligently discovered paths
-        if repo_config and hasattr(repo_config, 'outputs'):
-            results_file = repo_config.outputs.get('results_file')
-            if results_file:
-                config_results_path = codebase_path / results_file
-                if config_results_path.exists():
-                    try:
-                        with open(config_results_path, 'r') as f:
-                            results = json.load(f)
-                        total_configs = len(results)
-                        total_metrics = self._count_metrics_in_results(results)
-                        
-                        # Use the directory name from the path as the experiment set name
-                        set_name = config_results_path.parent.name if config_results_path.parent != codebase_path else "root"
-                        
-                        experiment_sets.append(ExperimentSet(
-                            name=set_name,
-                            results=results,
-                            total_configs=total_configs,
-                            total_metrics=total_metrics
-                        ))
-                        logger.info(f"✓ Loaded from config: {set_name} ({results_file}): {total_configs} configs, {total_metrics} metrics")
-                    except Exception as e:
-                        logger.warning(f"Failed to load results from {config_results_path}: {e}")
-
-        # Priority 2: Check for complete_results.json in the root of the codebase
+        # Check for complete_results.json in the root of the codebase
         root_results_path = codebase_path / "complete_results.json"
         if root_results_path.exists() and not any(es.name == "root" for es in experiment_sets):
             try:
@@ -316,11 +288,9 @@ class ResultEvaluator:
             except Exception as e:
                 logger.error(f"Failed to load root complete_results.json: {e}")
 
-        # Dynamically discover output directories with complete_results.json
-        output_dirs = [
-            item.name for item in codebase_path.iterdir()
-            if item.is_dir() and (item / "complete_results.json").exists()
-        ]
+        # Discover sibling output directories with complete_results.json
+        output_dirs = [item.name for item in codebase_path.iterdir()
+                       if item.is_dir() and (item / "complete_results.json").exists()]
 
         if not any((experiment_sets, output_dirs)):
             logger.warning(
@@ -406,24 +376,7 @@ class ResultEvaluator:
         Returns:
             BaselineMetrics with extracted values
         """
-        # PRIORITY 1: Try repo_config report_file if available
-        if repo_config and hasattr(repo_config, 'outputs') and codebase_path:
-            report_file = repo_config.outputs.get('report_file')
-            if report_file:
-                report_path = codebase_path / report_file
-                if report_path.exists():
-                    try:
-                        metrics = self._parse_single_report_file(report_path)
-                        if metrics:
-                            logger.info(f"✓ Using intelligently discovered report: {report_file}")
-                            return BaselineMetrics(
-                                metrics=metrics,
-                                source=f"Parsed from {report_file} (via repo_config)"
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to parse report from {report_file}: {e}")
-        
-        # PRIORITY 2: Try to parse report.md files for configuration-specific metrics
+        # PRIORITY 1: Parse report.md files in outputs directories (paper's reported baselines)
         # This represents the paper's reported baselines, not the reproduced results
         if codebase_path:
             metrics = self._parse_report_files(codebase_path)

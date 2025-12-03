@@ -28,7 +28,7 @@ experiments:
 
 baseline:
   save_baseline: true
-  baseline_file: "paper_metrics.json"
+  baseline_file: ".json"
 
 metrics:
   per_example: false

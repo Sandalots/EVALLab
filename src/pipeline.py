@@ -674,15 +674,9 @@ class ReproductionAgent:
         print("\033[96m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
-        # Get repo-specific configuration for intelligent output file location
-        from src.helper.repo_config import get_repo_config
-        repo_config = get_repo_config(codebase_info.path)
-        if repo_config:
-            logger.info(f"✓ Using repo configuration: {repo_config.name}")
-        
-        # Load ALL experiment results from all output directories
+        # Load ALL experiment results from all output directories (directory-based discovery)
         experiment_sets = self.result_evaluator.load_all_experiment_results(
-            codebase_info.path, repo_config=repo_config)
+            codebase_info.path)
 
         if not experiment_sets:
             logger.error("No experiment result sets found")
@@ -696,11 +690,10 @@ class ReproductionAgent:
         logger.info(
             f"✓ Extracted {len(all_reproduced_metrics)} total metrics from all experiments")
 
-        # Try to extract baseline from paper AND report.md files
+        # Extract baseline from report.md files (prefer outputs_all_methods/report.md)
         baseline = self.result_evaluator.extract_baseline_from_paper(
             paper_content.results or paper_content.raw_text,
-            codebase_path=codebase_info.path,  # Pass codebase path for report.md parsing
-            repo_config=repo_config  # Pass repo config for intelligent file discovery
+            codebase_path=codebase_info.path
         )
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")
