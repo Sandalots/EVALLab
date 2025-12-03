@@ -1,0 +1,38 @@
+name: code
+path_pattern: code
+dependencies:
+- datasets>=2.14.0
+- transformers>=4.35.0
+- torch>=2.0.0
+- numpy>=1.24.0
+- pandas>=2.0.0
+- scikit-learn>=1.3.0
+- tqdm>=4.65.0
+- pyserini>=0.22.0
+- faiss-cpu>=1.7.4
+pre_run_setup: []
+experiments:
+- name: main_experiment
+  type: python_script
+  path: main_local_all_new.py
+  args:
+  - --config
+  - config.yaml
+  timeout: 1200
+  description: ''
+baseline:
+  save_baseline: false
+  baseline_file: complete_results.json
+metrics:
+  per_example: false
+  extractors:
+  - pattern: Recall@10:\s*([0-9.]+)
+    name: recall_at_10
+  - pattern: MRR:\s*([0-9.]+)
+    name: mrr
+outputs:
+  results_file: outputs_all_methods_oracle/complete_results.json
+  report_file: outputs_all_methods_oracle/report.md
+data_validation:
+  data_dir: data
+  required_files: []

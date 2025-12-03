@@ -52,6 +52,25 @@ class RepoRetriever:
             # Check if it's a GitHub URL (passed as string converted to Path)
             local_path_str = str(local_path)
             if 'github.com' in local_path_str or local_path_str.startswith('http'):
+                # Special-case: EVALLab repo URL triggers local codebase fetch script
+                if 'github.com/Sandalots/EVALLab' in local_path_str:
+                    try:
+                        logger.info("Detected EVALLab repo link; running scripts/get_codebase.sh to fetch codebase...")
+                        script_path = self.workspace_root / 'scripts' / 'get_codebase.sh'
+                        if not script_path.exists():
+                            logger.error(f"Missing script: {script_path}")
+                        else:
+                            subprocess.run(['bash', str(script_path)], check=True)
+                            # After fetch, try to locate the code directory
+                            code_path = self._find_local_code()
+                            if code_path:
+                                logger.info(f"✓ Using fetched local codebase: {code_path}")
+                                return code_path
+                            else:
+                                logger.warning("Codebase fetch script ran but no code directory was found.")
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"Failed to run get_codebase.sh: {e}")
+                    # Fall through to normal URL handling if fetch fails
                 logger.info(f"User provided GitHub URL: {local_path_str}")
                 # Normalize URL format (fix common issues like missing slashes)
                 normalized_url = self._normalize_github_url(local_path_str)
@@ -98,6 +117,25 @@ class RepoRetriever:
             logger.info(f"Found {len(github_urls)} GitHub URL(s) in paper")
             for url in github_urls:
                 logger.info(f"  - {url}")
+
+            # Special-case EVALLab repo URL: run fetch script instead of cloning
+            if any('github.com/Sandalots/EVALLab' in u for u in github_urls):
+                try:
+                    logger.info("Detected EVALLab repo link in paper; running scripts/get_codebase.sh to fetch codebase...")
+                    script_path = self.workspace_root / 'scripts' / 'get_codebase.sh'
+                    if not script_path.exists():
+                        logger.error(f"Missing script: {script_path}")
+                    else:
+                        subprocess.run(['bash', str(script_path)], check=True)
+                        code_path = self._find_local_code()
+                        if code_path:
+                            logger.info(f"✓ Using fetched local codebase: {code_path}")
+                            return code_path
+                        else:
+                            logger.warning("Codebase fetch script ran but no code directory was found.")
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"Failed to run get_codebase.sh: {e}")
+                # If fetch fails, fallback to normal cloning below
 
             cloned_path = self._clone_github_repo(github_urls[0])
             if cloned_path:
@@ -368,6 +406,15 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
         if not base_path.is_dir():
             return None
         
+        # Strong heuristic: prefer a top-level 'code' directory if it contains entry scripts
+        code_dir = base_path / 'code'
+        if code_dir.is_dir():
+            entry_names = {'main.py', 'run.py', 'train.py', 'experiment.py', 'main_local_all_new.py'}
+            files = {f.name for f in code_dir.glob('*.py')}
+            if entry_names & files:
+                logger.debug(f"Heuristic preferred 'code' directory: {code_dir.relative_to(base_path)}")
+                return code_dir
+
         # First try heuristic: look for directories with main/run scripts
         candidates = []
         for item in base_path.rglob("*.py"):

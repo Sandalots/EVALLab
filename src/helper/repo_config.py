@@ -286,8 +286,8 @@ Generate a YAML configuration in this EXACT format:
 }}
 
 IMPORTANT:
-1. For the experiment path, use EXACTLY one of these main scripts (do not add or remove directories):
-   {', '.join(main_scripts) if main_scripts else 'None'}
+1. For the experiment path, use EXACTLY one of these main scripts WITH THE SAME RELATIVE PATH shown (do not add or remove directories):
+    {', '.join(main_scripts) if main_scripts else 'None'}
 2. Include all dependencies from requirements.txt
 3. Extract metric patterns from README (look for evaluation metrics like Accuracy, F1, Recall, MRR)
 4. For outputs.results_file and outputs.report_file, use the ACTUAL paths found in "Output/Result Files Found" section

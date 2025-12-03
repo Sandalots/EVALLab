@@ -632,6 +632,25 @@ class ExperimentExecutor:
         working_dir = config.working_dir if config.working_dir else script_path.parent
 
         try:
+            # Fix missing config file by substituting known local config names
+            if config.args:
+                try:
+                    if '--config' in config.args:
+                        idx = config.args.index('--config')
+                        if idx + 1 < len(config.args):
+                            cfg_name = config.args[idx + 1]
+                            cfg_path = Path(working_dir) / cfg_name
+                            if not cfg_path.exists():
+                                # Try common alternatives in this codebase
+                                alternatives = ['config_local_all.yaml', 'config_local.yaml', 'config.yaml']
+                                for alt in alternatives:
+                                    alt_path = Path(working_dir) / alt
+                                    if alt_path.exists():
+                                        self.logger.info(f"[run_experiment] Substituting missing config '{cfg_name}' with '{alt}'")
+                                        config.args[idx + 1] = alt
+                                        break
+                except Exception:
+                    pass
 
             if is_test_script:
                 # Run with pytest and capture output (use -v for verbose test names)
