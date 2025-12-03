@@ -33,8 +33,9 @@ class PaperParser:
 
     def __init__(self):
         # Pattern matches URLs possibly split across lines
+        # Matches: https://github.com/username/repo-name (with optional .git)
         self.github_pattern = re.compile(
-            r'https?://github\.com(?:/|\s+)[\w\-]+(?:/|\s+)[\w\-\.]+',
+            r'https?://github\.com(?:/|\s+)[\w\-]+(?:/|\s+)[\w\-]+(?:\.git)?',
             re.IGNORECASE
         )
 
@@ -68,13 +69,14 @@ class PaperParser:
 
     def _extract_github_urls(self, text: str) -> List[str]:
         """Extract GitHub repository URLs from text, cleaning trailing reference symbols/punctuation and .N artifacts."""
-        # Join lines to handle split URLs
-        text_joined = re.sub(r'\s*\n\s*', '', text)
-        urls = self.github_pattern.findall(text_joined)
-        # Clean up URLs (remove any whitespace)
-        urls = [re.sub(r'\s+', '', url) for url in urls]
+        # First, find URLs with the pattern that allows spaces/newlines within the URL structure
+        urls = self.github_pattern.findall(text)
+        
         cleaned_urls = []
         for url in urls:
+            # Remove ALL whitespace from the URL (handles split URLs)
+            url = re.sub(r'\s+', '', url)
+            
             # Remove trailing characters that are not valid in GitHub repo URLs
             # Remove trailing .N, .N., .N], .N), .N}, .N; etc. (where N is one or more digits)
             url = re.sub(r'(\.[0-9]+([\]\)\}}\.,;:!])*)+$', '', url)
@@ -82,6 +84,13 @@ class PaperParser:
             url = re.sub(r'[\.,;:!\)\]\}]+$', '', url)
             # Remove trailing reference numbers in brackets (e.g., [1], [12])
             url = re.sub(r'\[[0-9]+\]$', '', url)
+            
+            # Additional safety: ensure URL ends at proper boundary (repo name or .git)
+            # Remove any trailing word characters that come after the repo name
+            match = re.match(r'(https?://github\.com/[\w\-]+/[\w\-]+(?:\.git)?)', url)
+            if match:
+                url = match.group(1)
+            
             cleaned_urls.append(url)
             
         # Remove duplicates while preserving order

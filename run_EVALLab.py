@@ -60,8 +60,7 @@ def main():
     print("=" * 100)
     print("\033[1;96m" + "█" * 100 + "\033[0m")
     print("\033[1;96m█" + " " * 98 + "█\033[0m")
-    print("\033[1;96m█" +
-          "🔬 EVALLab: Research Paper Reproduction Agent".center(98) + "█\033[0m")
+    print("\033[1;96m█" + "🔬 EVALLab: Research Paper Reproduction Agent".center(98) + "█\033[0m")
     print("\033[1;96m█" + " " * 98 + "█\033[0m")
     print("\033[1;96m" + "█" * 100 + "\033[0m")
     print("=" * 100)
@@ -79,28 +78,24 @@ def main():
     print("=" * 100)
     print("\033[1;96m" + "█" * 100 + "\033[0m")
     print("\033[1;96m█" + " " * 98 + "█\033[0m")
-    print("\033[1;96m█" +
-          "🔬 EVALLab: Research Paper Reproduction Agent".center(98) + "█\033[0m")
+    print("\033[1;96m█" + "🔬 EVALLab: Research Paper Reproduction Agent".center(98) + "█\033[0m")
     print("\033[1;96m█" + " " * 98 + "█\033[0m")
     print("\033[1;96m" + "█" * 100 + "\033[0m")
     print("=" * 100)
 
     # What is EVALLab?
     print("\n\033[1;93m┌" + "─" * 98 + "┐\033[0mp")
-    print("\033[1;93m│\033[0m" +
-          "\033[1;97m WHAT IS EVALLAB?\033[0m".center(98) + "\033[1;93m│\033[0m")
+    print("\033[1;93m│\033[0m" + "\033[1;97m WHAT IS EVALLAB?\033[0m".center(98) + "\033[1;93m│\033[0m")
     print("\033[1;93m├" + "─" * 98 + "┤\033[0m")
     print("\033[1;93m│\033[0m" + " An autonomous AI agent that reproduces computational experiments from research papers.".ljust(98) + "\033[1;93m│\033[0m")
     print("\033[1;93m│\033[0m" + " It parses PDFs, retrieves code, runs experiments, and validates results against baselines.".ljust(98) + "\033[1;93m│\033[0m")
     print("\033[1;93m│\033[0m" + " ".ljust(98) + "\033[1;93m│\033[0m")
-    print("\033[1;93m│\033[0m" +
-          " 🎯 Goal: Verify reproducibility of published research with 94.2% accuracy".ljust(98) + "\033[1;93m│\033[0m")
+    print("\033[1;93m│\033[0m" + " 🎯 Goal: Verify reproducibility of published research with 94.2% accuracy".ljust(98) + "\033[1;93m│\033[0m")
     print("\033[1;93m└" + "─" * 98 + "┘\033[0m")
 
     # 4-Stage Pipeline Overview
     print("\n\033[1;92m┌" + "─" * 98 + "┐\033[0m")
-    print("\033[1;92m│\033[0m" +
-          "\033[1;97m 4-STAGE REPRODUCTION PIPELINE\033[0m".center(98) + "\033[1;92m│\033[0m")
+    print("\033[1;92m│\033[0m" + "\033[1;97m 4-STAGE REPRODUCTION PIPELINE\033[0m".center(98) + "\033[1;92m│\033[0m")
     print("\033[1;92m├" + "─" * 98 + "┤\033[0m")
     print("\033[1;92m│\033[0m" + " ".ljust(98) + "\033[1;92m│\033[0m")
     print("\033[1;92m│\033[0m" + "   \033[1;94m[1] PAPER PARSING\033[0m       → Extracts text, (Abstract, methodology, experiment, figures) from the input Research Paper".ljust(98) + "\033[1;92m│\033[0m")
@@ -112,40 +107,30 @@ def main():
 
     # What You Get
     print("\n\033[1;95m┌" + "─" * 98 + "┐\033[0m")
-    print("\033[1;95m│\033[0m" +
-          "\033[1;97m OUTPUT & DELIVERABLES\033[0m".center(98) + "\033[1;95m│\033[0m")
+    print("\033[1;95m│\033[0m" + "\033[1;97m OUTPUT & DELIVERABLES\033[0m".center(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m├" + "─" * 98 + "┤\033[0m")
     print("\033[1;95m│\033[0m" + " ".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + "   📋 Complete Execution Log  → Full CLI output with all stages and colored metrics".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + "   📊 Summary Statistics      → Success rate, deviation metrics, performance grades".ljust(98) + "\033[1;95m│\033[0m")
-    print("\033[1;95m│\033[0m" +
-          "   🤖 EVALLab Analysis            → AI-powered insights into result differences".ljust(98) + "\033[1;95m│\033[0m")
+    print("\033[1;95m│\033[0m" + "   🤖 EVALLab Analysis            → AI-powered insights into result differences".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + "   📋 Conclusions             → Comprehensive findings and improvement recommendations".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + "   📈 Visualizations          → 7+ charts (bar, scatter, heatmap, histogram, tables)".ljust(98) + "\033[1;95m│\033[0m")
-    print("\033[1;95m│\033[0m" +
-          "   🌐 HTML Dashboard          → Interactive results browser with embedded images".ljust(98) + "\033[1;95m│\033[0m")
-    print("\033[1;95m│\033[0m" +
-          "   📁 CSV Exports             → Raw data for custom analysis".ljust(98) + "\033[1;95m│\033[0m")
+    print("\033[1;95m│\033[0m" + "   🌐 HTML Dashboard          → Interactive results browser with embedded images".ljust(98) + "\033[1;95m│\033[0m")
+    print("\033[1;95m│\033[0m" + "   📁 CSV Exports             → Raw data for custom analysis".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m│\033[0m" + " ".ljust(98) + "\033[1;95m│\033[0m")
     print("\033[1;95m└" + "─" * 98 + "┘\033[0m")
 
     # Next Steps Section
     print("\n\033[1;96m┌" + "─" * 98 + "┐\033[0m")
-    print("\033[1;96m│\033[0m" +
-          "\033[1;97m NEXT STEPS AFTER COMPLETION\033[0m".center(98) + "\033[1;96m│\033[0m")
+    print("\033[1;96m│\033[0m" + "\033[1;97m NEXT STEPS AFTER COMPLETION\033[0m".center(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m├" + "─" * 98 + "┤\033[0m")
     print("\033[1;96m│\033[0m" + " ".ljust(98) + "\033[1;96m│\033[0m")
 
-    print("\033[1;96m│\033[0m" +
-          "   1. Review outputs/[paper_name]_results.txt for complete execution log".ljust(98) + "\033[1;96m│\033[0m")
-    print("\033[1;96m│\033[0m" +
-          "   2. Open outputs/visualizations/visualizations.html in browser".ljust(98) + "\033[1;96m│\033[0m")
-    print("\033[1;96m│\033[0m" +
-          "   3. Analyze outputs/visualizations/detailed_comparison.csv for raw metrics".ljust(98) + "\033[1;96m│\033[0m")
-    print("\033[1;96m│\033[0m" +
-          "   4. Read EVALLab insights and recommendations in the results file".ljust(98) + "\033[1;96m│\033[0m")
-    print("\033[1;96m│\033[0m" +
-          "   5. Check outputs/agent_execution.log for detailed agent activity".ljust(98) + "\033[1;96m│\033[0m")
+    print("\033[1;96m│\033[0m" + "   1. Review outputs/[paper_name]_results.txt for complete execution log".ljust(98) + "\033[1;96m│\033[0m")
+    print("\033[1;96m│\033[0m" + "   2. Open outputs/visualizations/visualizations.html in browser".ljust(98) + "\033[1;96m│\033[0m")
+    print("\033[1;96m│\033[0m" + "   3. Analyze outputs/visualizations/detailed_comparison.csv for raw metrics".ljust(98) + "\033[1;96m│\033[0m")
+    print("\033[1;96m│\033[0m" + "   4. Read EVALLab insights and recommendations in the results file".ljust(98) + "\033[1;96m│\033[0m")
+    print("\033[1;96m│\033[0m" + "   5. Check outputs/agent_execution.log for detailed agent activity".ljust(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m│\033[0m" + " ".ljust(98) + "\033[1;96m│\033[0m")
     print("\033[1;96m└" + "─" * 98 + "┘\033[0m")
 
@@ -229,8 +214,7 @@ def main():
                        if d.is_dir()]
             if subdirs:
                 print(f"✓ Found code directory: {paper_source_dir}")
-                print(
-                    f"   Subdirectories: {', '.join(subdirs[:3])}{' ...' if len(subdirs) > 3 else ''}")
+                print(f"   Subdirectories: {', '.join(subdirs[:3])}{' ...' if len(subdirs) > 3 else ''}")
             else:
                 print(f"✓ Found files in: {paper_source_dir}")
         else:
@@ -281,8 +265,7 @@ def main():
         agent = ReproductionAgent()
 
         # Start runtime and memory tracking
-        results = agent.run(paper_path=paper_path,
-                            codebase_source=codebase_source)
+        results = agent.run(paper_path=paper_path, codebase_source=codebase_source)
 
         # Stop runtime and memory tracking
         end_time = time.time()
@@ -295,8 +278,7 @@ def main():
         # Save runtime and memory info for HTML report AFTER visualizations are generated
         resource_path = output_dir / 'resource_usage.json'
         with open(resource_path, 'w') as f:
-            json.dump({'runtime_seconds': runtime_seconds,
-                      'peak_memory_mb': peak_mb}, f)
+            json.dump({'runtime_seconds': runtime_seconds, 'peak_memory_mb': peak_mb}, f)
 
         # Regenerate the per-paper HTML so it picks up the new resource_usage.json
         # Harden this block so minor dashboard issues don't flip success to failure.
@@ -322,7 +304,7 @@ def main():
                     'summary_statistics': output_dir / 'summary_statistics.png',
                     'detailed_csv': output_dir / 'detailed_comparison.csv',
                     'per_example_diffs': output_dir / 'per_example_diffs.html',
-                        'per_example_metrics': output_dir / 'per_example_metrics.html',
+                    'per_example_metrics': output_dir / 'per_example_metrics.html',
                     'visualizations_html': output_dir / 'visualizations.html',
                     'resource_usage': output_dir / 'resource_usage.json',
                     'agent_log': output_dir / 'agent_execution.log',
@@ -351,25 +333,20 @@ def main():
         print("\n" + "=" * 100)
         print("\033[1;92m" + "█" * 100 + "\033[0m")
         print("\033[1;92m█" + " " * 98 + "█\033[0m")
-        print(
-            "\033[1;92m█" + "✅ REPRODUCTION WORKFLOW COMPLETED SUCCESSFULLY!".center(98) + "█\033[0m")
+        print("\033[1;92m█" + "✅ REPRODUCTION WORKFLOW COMPLETED SUCCESSFULLY!".center(98) + "█\033[0m")
         print("\033[1;92m█" + " " * 98 + "█\033[0m")
         print("\033[1;92m" + "█" * 100 + "\033[0m")
         print("=" * 100)
 
         print("\n\033[1;96m📊 Results Summary:\033[0m")
         print(f"  • All outputs saved to: \033[1;93m{output_dir}/\033[0m")
-        print(
-            f"  • \033[1;97mRaw EVALLab agent log:\033[0m \033[1;93m{output_dir}/agent_execution.log\033[0m")
-        print(
-            f"  • Visualizations: \033[1;93m{output_dir}/visualizations.html\033[0m")
-        print(
-            f"  • CSV data: \033[1;93m{output_dir}/detailed_comparison.csv\033[0m\n")
+        print(f"  • \033[1;97mRaw EVALLab agent log:\033[0m \033[1;93m{output_dir}/agent_execution.log\033[0m")
+        print(f"  • Visualizations: \033[1;93m{output_dir}/visualizations.html\033[0m")
+        print(f"  • CSV data: \033[1;93m{output_dir}/detailed_comparison.csv\033[0m\n")
         print(f"  • Total runtime: {runtime_seconds:.2f} seconds")
         print(f"  • Peak memory usage: {peak_mb:.2f} MB")
 
-        print(
-            f"\n\033[1;92m✨ Open the HTML dashboard ({output_dir}/visualizations.html) in your browser to explore results!\033[0m\n")
+        print(f"\n\033[1;92m✨ Open the HTML dashboard ({output_dir}/visualizations.html) in your browser to explore results!\033[0m\n")
 
         return 0
 
