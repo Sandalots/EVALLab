@@ -98,7 +98,7 @@ class RepoRetriever:
         # Only fallback to Decontextualisation codebase if the paper is Decontextualisation
         paper_name = None
         if hasattr(self, 'paper_path') and self.paper_path:
-            paper_name = str(self.paper_path).lower()
+            paper_name = self.paper_path.stem.lower()
         if paper_name and ('decontextualisation' in paper_name or 'decontextualization' in paper_name):
             local_code = self._find_local_code()
             if local_code:
@@ -171,7 +171,7 @@ class RepoRetriever:
         ]
 
         for indicator in code_indicators:
-            if list(path.glob(indicator)) or list(path.rglob(indicator)):
+            if any(path.glob(indicator)) or any(path.rglob(indicator)):
                 return True
 
         return False

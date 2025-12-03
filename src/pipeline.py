@@ -373,13 +373,13 @@ class ReproductionAgent:
             start = text.find('{')
             if start == -1:
                 return None
-            stack = []
+            depth = 0
             for i in range(start, len(text)):
                 if text[i] == '{':
-                    stack.append(i)
-                elif text[i] == '}':
-                    stack.pop()
-                    if not stack:
+                    depth += 1
+                elif text[i] == '}':  
+                    depth -= 1
+                    if depth == 0:
                         return text[start:i+1]
             return None
 
@@ -1032,8 +1032,7 @@ class ReproductionAgent:
                             # Handle metrics with multiple thresholds (e.g., recall@1, recall@5)
                             for threshold, val in metric_value.items():
                                 if isinstance(val, (int, float)):
-                                    metrics[f"{metric_name}@{threshold}"] = float(
-                                        val)
+                                    metrics[f"{metric_name}@{threshold}"] = float(val)
                         elif isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
                             metrics[metric_name] = float(metric_value)
                 else:

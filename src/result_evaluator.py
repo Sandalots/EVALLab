@@ -280,7 +280,7 @@ class ResultEvaluator:
             if item.is_dir() and (item / "complete_results.json").exists()
         ]
 
-        if not experiment_sets and not output_dirs:
+        if not any((experiment_sets, output_dirs)):
             logger.warning(
                 "No output directories or root complete_results.json found")
             return []
@@ -1163,7 +1163,7 @@ Provide a concise analysis (3-4 paragraphs)."""
                     "    → Check sentence tokenization implementation")
 
         # Check for retrieval model issues
-        for model in ['bm25', 'tfidf', 'colbert', 'cross_encoder']:
+        for model in ('bm25', 'tfidf', 'colbert', 'cross_encoder'):
             model_comps = [
                 c for c in comparisons if model in c.configuration.lower()]
             if model_comps:

@@ -105,7 +105,7 @@ class ExperimentExecutor:
         """Collect output files from experiment execution."""
         outputs = {}
         # Look for common output patterns
-        output_patterns = ['output*.json', 'results*.json', '*.json']
+        output_patterns = ('output*.json', 'results*.json', '*.json')
         for pattern in output_patterns:
             for output_file in working_dir.glob(pattern):
                 # Skip baseline_metrics.json - it's for comparison, not experiment output
@@ -225,8 +225,7 @@ class ExperimentExecutor:
             ])
 
         # Sort by likelihood (evaluate > test > main > run > train > experiment)
-        priority_order = ['evaluate', 'test',
-                          'main', 'run', 'train', 'experiment']
+        priority_order = ('evaluate', 'test', 'main', 'run', 'train', 'experiment')
 
         def sort_key(p: Path):
             name = p.stem.lower()
@@ -256,9 +255,8 @@ class ExperimentExecutor:
                         if dep in import_text and dep not in dependencies_set:
                             dependencies.append(dep)
                             dependencies_set.add(dep)
-            except Exception as e:
-                self.logger.warning(
-                    f"Error auto-detecting dependencies from entry script: {e}")
+            except OSError as e:
+                self.logger.warning(f"Error auto-detecting dependencies from entry script: {e}")
 
         if language == 'python':
             req_files = [
@@ -292,12 +290,10 @@ class ExperimentExecutor:
             setup_file = path / 'setup.py'
             if setup_file.exists():
                 try:
-                    with open(setup_file) as f:
-                        content = f.read()
-                        if 'install_requires' in content:
-                            self.logger.debug(
-                                "Found install_requires in setup.py")
-                except Exception as e:
+                    content = setup_file.read_text(encoding='utf-8')
+                    if 'install_requires' in content:
+                        self.logger.debug("Found install_requires in setup.py")
+                except OSError as e:
                     self.logger.warning(f"Error reading setup.py: {e}")
 
             # If no requirements.txt, parse README for PyTorch
@@ -305,16 +301,15 @@ class ExperimentExecutor:
                 readme_path = path / 'README.md'
                 if readme_path.exists():
                     try:
-                        with open(readme_path, encoding='utf-8') as f:
-                            readme = f.read().lower()
-                            if 'pytorch' in readme or 'torchvision' in readme:
-                                self.logger.info(
-                                    "✓ README mentions PyTorch, adding torch and torchvision to dependencies")
-                                if 'torch' not in dependencies:
-                                    dependencies.append('torch')
-                                if 'torchvision' not in dependencies:
-                                    dependencies.append('torchvision')
-                    except Exception as e:
+                        readme = readme_path.read_text(encoding='utf-8').lower()
+                        if 'pytorch' in readme or 'torchvision' in readme:
+                            self.logger.info(
+                                "✓ README mentions PyTorch, adding torch and torchvision to dependencies")
+                            if 'torch' not in dependencies:
+                                dependencies.append('torch')
+                            if 'torchvision' not in dependencies:
+                                dependencies.append('torchvision')
+                    except OSError as e:
                         self.logger.warning(f"Error reading README.md: {e}")
 
         return dependencies
@@ -327,8 +322,7 @@ class ExperimentExecutor:
             readme_path = path / name
             if readme_path.exists():
                 try:
-                    with open(readme_path, 'r', encoding='utf-8') as f:
-                        return f.read()
+                    return readme_path.read_text(encoding='utf-8')
                 except Exception as e:
                     logger.warning(f"Error reading {name}: {e}")
 
@@ -568,8 +562,9 @@ class ExperimentExecutor:
 
         # Robust venv detection: prefer repo venvs (venv or .venv), fallback to workspace .venv, then system python
         def find_python_in_venvs(base_dirs):
+            venv_names = ('venv', '.venv')
             for base_dir in base_dirs:
-                for venv_name in ['venv', '.venv']:
+                for venv_name in venv_names:
                     venv_path = base_dir / venv_name
                     if platform.system() == 'Windows':
                         py = venv_path / 'Scripts' / 'python.exe'
@@ -626,8 +621,7 @@ class ExperimentExecutor:
         is_shell_script = script_path.suffix == '.sh'
 
         # Prepare environment variables
-        env = os.environ.copy()
-        env.update(config.env_vars)
+        env = {**os.environ, **config.env_vars}
         # Force single-threaded execution in subprocesses
         env["OMP_NUM_THREADS"] = "1"
         env["MKL_NUM_THREADS"] = "1"
@@ -765,12 +759,13 @@ class ExperimentExecutor:
                 # Pattern for model-prefixed metrics: "KNN Accuracy: 0.9667" or "SVM Precision (macro): 0.9524"
                 r"(KNN|SVM|RF|LR)\s+(Accuracy|Precision|Recall|F1\s+Score)(?:\s+\(macro\))?:\s+([0-9\.eE+-]+)",
             ]
+            model_names = {'KNN', 'SVM', 'RF', 'LR'}
             for line in stdout_lines + stderr_lines:
                 for pat in metric_patterns:
                     m = re.search(pat, line, re.IGNORECASE)
                     if m:
                         # Handle model-prefixed metrics (3 groups)
-                        if len(m.groups()) == 3 and m.group(1).upper() in ['KNN', 'SVM', 'RF', 'LR']:
+                        if len(m.groups()) == 3 and m.group(1).upper() in model_names:
                             model = m.group(1).lower()
                             metric = m.group(2).lower().translate(str.maketrans(' -', '__'))
                             key = f"{model}_{metric}"
@@ -789,14 +784,15 @@ class ExperimentExecutor:
                                 continue
 
             # Merge metrics from output files if present
+            metrics_set = set(metrics)
             for out in outputs.values():
                 if isinstance(out, dict):
                     for k, v in out.items():
-                        if isinstance(v, (int, float)) and k not in metrics:
+                        if isinstance(v, (int, float)) and k not in metrics_set:
                             metrics[k] = v
                         elif isinstance(v, dict):
                             for kk, vv in v.items():
-                                if isinstance(vv, (int, float)) and kk not in metrics:
+                                if isinstance(vv, (int, float)) and kk not in metrics_set:
                                     metrics[kk] = vv
 
             # If this was a pytest run, also parse test results
@@ -869,7 +865,8 @@ class ExperimentExecutor:
                             merged_metrics[key] = value
                         else:
                             preserved_count += 1
-                    self.logger.info(f"[run_experiment] Updated test results, preserved {len([k for k in existing_metrics if k not in test_fields and k not in performance_fields])} experiment metrics")
+                    preserved_metric_count = sum(1 for k in existing_metrics if k not in test_fields and k not in performance_fields)
+                    self.logger.info(f"[run_experiment] Updated test results, preserved {preserved_metric_count} experiment metrics")
                 else:
                     # Regular experiment run - merge all metrics (new takes precedence)
                     merged_metrics.update(metrics)

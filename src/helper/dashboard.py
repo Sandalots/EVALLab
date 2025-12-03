@@ -88,10 +88,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     runtime_seconds = None
     peak_memory_mb = None
     if output_dir is None:
-        if 'overall_performance' in files:
-            output_dir = Path(files['overall_performance']).parent
-        else:
-            output_dir = Path('.')
+        output_dir = Path(files['overall_performance']).parent if 'overall_performance' in files else Path('.')
     try:
         resource_path = output_dir / 'resource_usage.json'
         with open(resource_path, 'r') as f:
@@ -181,7 +178,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     # Metrics Table (color-coded)
     table_html = ""
-    if df is not None and len(df) > 0:
+    if df is not None and not df.empty:
         table_html += '<div class="visualization"><h2>Metric Comparison Table</h2><div class="metrics-table-wrapper"><table class="metrics-table">'
         table_html += '<tr><th>Configuration</th><th>Metric</th><th>Baseline</th><th>Reproduced</th><th>Diff (%)</th><th>Status</th></tr>'
         table_html += _build_metrics_table_rows(df)
