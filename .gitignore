@@ -56,3 +56,9 @@ results/
 papers/codebases/*
 outputs/
 cloned_repos/
+configs/repos/*
+HARDCODED_ANALYSIS.md
+BEFORE_AFTER_COMPARISON.md
+IMPLEMENTATION_SUMMARY.md
+LLM_AUTOMATION_ENHANCEMENTS.md
+LLM_ENHANCEMENT_SUMMARY.md

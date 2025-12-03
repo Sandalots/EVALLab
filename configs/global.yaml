@@ -24,5 +24,10 @@ evaluation:
     - recall
     - loss
 
+llm_discovery:
+  enabled: true
+  confidence_threshold: 0.5
+  fallback_to_heuristics: true
+
 paths:
   output_dir: "../outputs"

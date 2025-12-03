@@ -79,14 +79,15 @@ class ResultEvaluator:
                     metrics[key] = float(value)
         return metrics
 
-    def load_paper_metrics(self, codebase_path: Path) -> dict:
-        """Load ground truth metrics extracted from the paper (paper_metrics.json) or authors' baseline (complete_results.json from outputs_all_methods_oracle).
+    def load_paper_metrics(self, codebase_path: Path, repo_config=None) -> dict:
+        """Load ground truth metrics extracted from the paper (paper_metrics.json) or authors' baseline (complete_results.json).
 
         Preference order:
           1. codebase_path/paper_metrics.json (manual baseline)
-          2. codebase_path/outputs_all_methods_oracle/complete_results.json (authors' baseline for decontextualization)
-          3. codebase_path/outputs_all_methods/complete_results.json (fallback)
-          4. Recursive search under nearest 'papers' or 'codebases' dirs
+          2. repo_config.outputs.results_file (if configured - intelligently discovered path)
+          3. codebase_path/outputs_all_methods_oracle/complete_results.json (authors' baseline)
+          4. codebase_path/outputs_all_methods/complete_results.json (fallback)
+          5. Recursive search under nearest 'papers' or 'codebases' dirs
         """
         
         # 1. Check for paper_metrics.json in experiment directory (manual baseline)
@@ -100,7 +101,21 @@ class ResultEvaluator:
             except Exception as e:
                 logger.error(f"Failed to load paper_metrics.json from experiment directory: {e}")
 
-        # 2. Check for authors' baseline in outputs_all_methods_oracle/complete_results.json
+        # 2. Check repo_config for intelligently discovered output paths
+        if repo_config and hasattr(repo_config, 'outputs'):
+            results_file = repo_config.outputs.get('results_file')
+            if results_file:
+                config_results_path = codebase_path / results_file
+                logger.debug(f"[DEBUG] Checking repo_config results_file: {config_results_path}")
+                if config_results_path.exists():
+                    try:
+                        with open(config_results_path, 'r') as f:
+                            logger.info(f"✓ Using intelligently discovered baseline from {results_file}")
+                            return json.load(f)
+                    except Exception as e:
+                        logger.warning(f"Failed to load results from {config_results_path}: {e}")
+
+        # 3. Check for authors' baseline in outputs_all_methods_oracle/complete_results.json
         oracle_baseline_path = codebase_path / 'outputs_all_methods_oracle' / 'complete_results.json'
         logger.debug(f"[DEBUG] Checking for authors' baseline at: {oracle_baseline_path}")
         if oracle_baseline_path.exists():
@@ -244,21 +259,48 @@ class ResultEvaluator:
         self.llm_client = llm_client
         self.threshold = threshold
 
-    def load_all_experiment_results(self, codebase_path: Path) -> List[ExperimentSet]:
+    def load_all_experiment_results(self, codebase_path: Path, repo_config=None) -> List[ExperimentSet]:
         """
         Load results from all output directories, or from the root if present.
+        If repo_config is provided, prioritize the intelligently discovered output paths.
 
         Args:
             codebase_path: Path to codebase
+            repo_config: Optional repository configuration with output paths
 
         Returns:
             List of ExperimentSet objects
         """
         experiment_sets = []
 
-        # Check for complete_results.json in the root of the codebase
+        # Priority 1: Check repo_config for intelligently discovered paths
+        if repo_config and hasattr(repo_config, 'outputs'):
+            results_file = repo_config.outputs.get('results_file')
+            if results_file:
+                config_results_path = codebase_path / results_file
+                if config_results_path.exists():
+                    try:
+                        with open(config_results_path, 'r') as f:
+                            results = json.load(f)
+                        total_configs = len(results)
+                        total_metrics = self._count_metrics_in_results(results)
+                        
+                        # Use the directory name from the path as the experiment set name
+                        set_name = config_results_path.parent.name if config_results_path.parent != codebase_path else "root"
+                        
+                        experiment_sets.append(ExperimentSet(
+                            name=set_name,
+                            results=results,
+                            total_configs=total_configs,
+                            total_metrics=total_metrics
+                        ))
+                        logger.info(f"✓ Loaded from config: {set_name} ({results_file}): {total_configs} configs, {total_metrics} metrics")
+                    except Exception as e:
+                        logger.warning(f"Failed to load results from {config_results_path}: {e}")
+
+        # Priority 2: Check for complete_results.json in the root of the codebase
         root_results_path = codebase_path / "complete_results.json"
-        if root_results_path.exists():
+        if root_results_path.exists() and not any(es.name == "root" for es in experiment_sets):
             try:
                 with open(root_results_path, 'r') as f:
                     results = json.load(f)
@@ -352,18 +394,36 @@ class ResultEvaluator:
 
     # compare_to_paper_metrics removed - functionality replaced by extract_all_metrics_from_experiments + compare_results
 
-    def extract_baseline_from_paper(self, paper_content: str, codebase_path: Path = None) -> BaselineMetrics:
+    def extract_baseline_from_paper(self, paper_content: str, codebase_path: Path = None, repo_config=None) -> BaselineMetrics:
         """
         Extract baseline metrics from paper text or report.md files.
 
         Args:
             paper_content: Text content from the research paper
             codebase_path: Path to codebase for finding report.md files
+            repo_config: Optional repository configuration with output paths
 
         Returns:
             BaselineMetrics with extracted values
         """
-        # PRIORITY 1: Try to parse report.md files for configuration-specific metrics
+        # PRIORITY 1: Try repo_config report_file if available
+        if repo_config and hasattr(repo_config, 'outputs') and codebase_path:
+            report_file = repo_config.outputs.get('report_file')
+            if report_file:
+                report_path = codebase_path / report_file
+                if report_path.exists():
+                    try:
+                        metrics = self._parse_single_report_file(report_path)
+                        if metrics:
+                            logger.info(f"✓ Using intelligently discovered report: {report_file}")
+                            return BaselineMetrics(
+                                metrics=metrics,
+                                source=f"Parsed from {report_file} (via repo_config)"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to parse report from {report_file}: {e}")
+        
+        # PRIORITY 2: Try to parse report.md files for configuration-specific metrics
         # This represents the paper's reported baselines, not the reproduced results
         if codebase_path:
             metrics = self._parse_report_files(codebase_path)
@@ -513,11 +573,7 @@ JSON:"""
             report_path = codebase_path / dir_name / "report.md"
             if report_path.exists():
                 try:
-                    with open(report_path, 'r') as f:
-                        content = f.read()
-
-                    # Parse the markdown report
-                    parsed = self._parse_markdown_report(content)
+                    parsed = self._parse_single_report_file(report_path)
 
                     # Flatten: parsed is {config/retriever: {metric: value}}
                     # Convert to: {dir/config/retriever/metric: value}
@@ -532,6 +588,20 @@ JSON:"""
                     logger.error(f"Failed to parse {report_path}: {e}")
 
         return metrics
+
+    def _parse_single_report_file(self, report_path: Path) -> Dict[str, Dict[str, float]]:
+        """
+        Parse a single report.md file to extract metrics.
+        
+        Args:
+            report_path: Path to the report.md file
+            
+        Returns:
+            Dict mapping config_name -> {metric: value}
+        """
+        with open(report_path, 'r') as f:
+            content = f.read()
+        return self._parse_markdown_report(content)
 
     def _parse_markdown_report(self, content: str) -> Dict[str, Dict[str, float]]:
         """
@@ -1363,13 +1433,19 @@ Provide a concise analysis (3-4 paragraphs)."""
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Convert comparisons to DataFrame
-        data = [
-            {
-                'experiment_set': (parts := comp.configuration.split('/'))[0] if parts else 'unknown',
+        def parse_config(config_str: str) -> dict:
+            """Parse configuration string into components."""
+            parts = config_str.split('/')
+            return {
+                'experiment_set': parts[0] if len(parts) > 0 else 'unknown',
                 'granularity': parts[1] if len(parts) > 1 else 'unknown',
                 'strategy': parts[2] if len(parts) > 2 else 'unknown',
                 'task_type': parts[3] if len(parts) > 3 else 'unknown',
                 'retriever': parts[4] if len(parts) > 4 else 'unknown',
+            }
+        
+        data = [
+            {**parse_config(comp.configuration),
                 'metric_name': comp.metric_name,
                 'baseline_value': comp.baseline_value,
                 'reproduced_value': comp.reproduced_value,

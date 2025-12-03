@@ -169,20 +169,17 @@ def main():
             print(f"❌ Not a PDF file: {args.paper}")
             return 1
     else:
-        # Auto-detect: Priority 1 - Decontextualisation.pdf (British spelling)
-        default_paper = paper_dir / "Decontextualisation.pdf"
-        if not default_paper.exists():
-            # Also try American spelling
-            default_paper = paper_dir / "Decontextualization.pdf"
-
-        if default_paper.exists():
-            paper_path = default_paper
-            print(f"✓ Using default paper: {default_paper.name}")
-        else:
-            # Priority 2 - Any PDF in papers/
-            if paper_dir.exists():
-                pdf_files = list(paper_dir.glob("*.pdf"))
-                if pdf_files:
+        # Auto-detect: Look for any PDF in papers/ directory
+        if paper_dir.exists():
+            pdf_files = list(paper_dir.glob("*.pdf"))
+            if pdf_files:
+                # Sort alphabetically for consistent behavior
+                pdf_files.sort()
+                paper_path = pdf_files[0]
+                print(f"✓ Auto-detected paper: {paper_path.name}")
+                if len(pdf_files) > 1:
+                    print(f"  ℹ️  Found {len(pdf_files)} PDFs, using first alphabetically")
+                    print(f"  ℹ️  Use --paper <filename> to specify a different paper")
                     paper_path = pdf_files[0]
                     print(f"✓ Auto-detected paper: {paper_path.name}")
                 else:

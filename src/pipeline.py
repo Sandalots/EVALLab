@@ -184,7 +184,7 @@ class ReproductionAgent:
 
         # Initialize components (using new 4-stage architecture)
         self.paper_parser = PaperParser()
-        self.repo_retriever = RepoRetriever()
+        self.repo_retriever = RepoRetriever(llm_client=self)  # Pass self as LLM client
         # Extract paper name for per-paper logging
         paper_name = None
         if hasattr(self, 'paper_path') and self.paper_path:
@@ -418,6 +418,19 @@ class ReproductionAgent:
                 logger.debug(f"Cleaned response:\n{cleaned_response}")
                 return {}
 
+    def query_llm(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """
+        Alias for generate() - used by repo_config and other modules.
+        
+        Args:
+            prompt: User prompt
+            system_prompt: Optional system prompt
+            
+        Returns:
+            Generated text response
+        """
+        return self.generate(prompt, system_prompt)
+
     # ============================================================================
     # MAIN WORKFLOW METHODS
     # ============================================================================
@@ -538,6 +551,9 @@ class ReproductionAgent:
         print("\033[92m│\033[0m" + " 📦 Searching for experiment code and dependencies".ljust(78) + "\033[92m│\033[0m")
         print("\033[92m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
+        
+        # Set paper path for LLM-based semantic matching
+        self.repo_retriever.paper_path = paper_path
 
         # Convert codebase_source to Path if it's a string
         local_path = Path(codebase_source) if codebase_source else None
@@ -658,9 +674,15 @@ class ReproductionAgent:
         print("\033[96m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
+        # Get repo-specific configuration for intelligent output file location
+        from src.helper.repo_config import get_repo_config
+        repo_config = get_repo_config(codebase_info.path)
+        if repo_config:
+            logger.info(f"✓ Using repo configuration: {repo_config.name}")
+        
         # Load ALL experiment results from all output directories
         experiment_sets = self.result_evaluator.load_all_experiment_results(
-            codebase_info.path)
+            codebase_info.path, repo_config=repo_config)
 
         if not experiment_sets:
             logger.error("No experiment result sets found")
@@ -677,7 +699,8 @@ class ReproductionAgent:
         # Try to extract baseline from paper AND report.md files
         baseline = self.result_evaluator.extract_baseline_from_paper(
             paper_content.results or paper_content.raw_text,
-            codebase_path=codebase_info.path  # Pass codebase path for report.md parsing
+            codebase_path=codebase_info.path,  # Pass codebase path for report.md parsing
+            repo_config=repo_config  # Pass repo config for intelligent file discovery
         )
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")
@@ -1060,9 +1083,28 @@ class ReproductionAgent:
             logger.warning(
                 "Environment setup had issues, proceeding anyway...")
 
-        # Check for README instructions
+        # Check for README instructions (enhanced with LLM parsing)
         priority_scripts = []
-        if codebase_info.readme_content:
+        readme_commands = None
+        
+        # Try LLM-based README parsing first
+        if hasattr(self.repo_retriever, 'parse_readme_commands'):
+            try:
+                readme_commands = self.repo_retriever.parse_readme_commands(codebase_info.path)
+                if readme_commands:
+                    logger.info(f"✓ LLM parsed README commands")
+                    main_script = readme_commands.get('main_script', '')
+                    main_args = readme_commands.get('main_args', [])
+                    if main_script:
+                        script_path = codebase_info.path / main_script
+                        if script_path.exists():
+                            logger.info(f"  Using LLM-discovered script: {main_script}")
+                            priority_scripts.append((script_path, main_args))
+            except Exception as e:
+                logger.debug(f"LLM README parsing failed: {e}")
+        
+        # Fallback to regex-based parsing if LLM didn't find anything
+        if not priority_scripts and codebase_info.readme_content:
             # Look for python commands in README
             python_cmds = re.findall(r'python[3]?\s+([\w_/\.]+\.py)(?:\s+(.*))?',
                                      codebase_info.readme_content, re.IGNORECASE)
@@ -1079,6 +1121,34 @@ class ReproductionAgent:
 
         # Check for repo-specific configuration (YAML-based)
         repo_config = get_repo_config(codebase_info.path)
+        
+        # If no config exists, try to generate one using LLM
+        if not repo_config:
+            logger.info("No repo config found - attempting LLM-based generation...")
+            try:
+                from src.helper.repo_config import llm_generate_repo_config, save_repo_config
+                
+                # Parse README commands first (if available)
+                readme_commands = None
+                if hasattr(self.repo_retriever, 'parse_readme_commands'):
+                    readme_commands = self.repo_retriever.parse_readme_commands(codebase_info.path)
+                    if readme_commands:
+                        logger.info(f"  ✓ Parsed README commands: {readme_commands.get('main_script', 'N/A')}")
+                
+                # Generate config
+                repo_config = llm_generate_repo_config(
+                    llm_client=self,
+                    codebase_path=codebase_info.path,
+                    readme_commands=readme_commands,
+                    logger=logger
+                )
+                
+                if repo_config:
+                    # Save to disk for future use
+                    save_repo_config(repo_config)
+                    logger.info(f"  ✓ Generated and saved config for {repo_config.name}")
+            except Exception as e:
+                logger.warning(f"  ⚠ Failed to generate config with LLM: {e}")
         
         if repo_config:
             logger.info(f"Detected {repo_config.name} - using YAML configuration")

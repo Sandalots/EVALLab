@@ -17,6 +17,8 @@ from typing import Callable, Dict, List, Optional, Any
 import logging
 import yaml
 import subprocess
+import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,303 @@ def load_all_configs() -> Dict[str, RepoConfig]:
 
 # Load all configs at module import
 REPO_REGISTRY = load_all_configs()
+
+
+def llm_generate_repo_config(
+    llm_client: Any,
+    codebase_path: Path,
+    readme_commands: Optional[Dict[str, Any]] = None,
+    logger: Optional[logging.Logger] = None
+) -> Optional[RepoConfig]:
+    """
+    Use LLM to analyze codebase and generate a RepoConfig automatically.
+    
+    Args:
+        llm_client: LLM client for analysis (must have query_llm method)
+        codebase_path: Path to the codebase root
+        readme_commands: Optional pre-parsed README commands from parse_readme_commands()
+        logger: Logger instance
+        
+    Returns:
+        Generated RepoConfig or None if generation fails
+    """
+    if not llm_client:
+        return None
+    
+    log = logger or logging.getLogger(__name__)
+    
+    try:
+        # Gather codebase context
+        repo_name = codebase_path.name
+        
+        # Read README if available and not pre-parsed
+        readme_content = ""
+        readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md']
+        for name in readme_names:
+            readme_path = codebase_path / name
+            if readme_path.exists():
+                try:
+                    readme_content = readme_path.read_text(encoding='utf-8', errors='ignore')[:3000]
+                    break
+                except Exception:
+                    continue
+        
+        # Scan for Python files, requirements, setup files
+        python_files = list(codebase_path.rglob("*.py"))[:20]  # Limit to first 20
+        
+        # Find main scripts with their ACTUAL relative paths
+        main_scripts = []
+        for f in python_files:
+            if 'main' in f.name.lower() or 'run' in f.name.lower() or 'train' in f.name.lower():
+                rel_path = f.relative_to(codebase_path)
+                main_scripts.append(str(rel_path))
+        
+        has_requirements = (codebase_path / 'requirements.txt').exists()
+        has_setup_py = (codebase_path / 'setup.py').exists()
+        
+        # Read requirements if available
+        dependencies_list = []
+        if has_requirements:
+            try:
+                reqs = (codebase_path / 'requirements.txt').read_text()
+                dependencies_list = [line.strip() for line in reqs.split('\n') if line.strip() and not line.startswith('#')][:15]
+            except Exception:
+                pass
+        
+        # Get directory structure (limited depth)
+        def get_tree(path: Path, max_depth: int = 2, current_depth: int = 0) -> str:
+            if current_depth >= max_depth:
+                return ""
+            lines = []
+            try:
+                items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+                for item in items[:12]:
+                    if item.name.startswith('.'):
+                        continue
+                    prefix = "  " * current_depth
+                    if item.is_dir():
+                        lines.append(f"{prefix}{item.name}/")
+                        lines.append(get_tree(item, max_depth, current_depth + 1))
+                    else:
+                        lines.append(f"{prefix}{item.name}")
+            except PermissionError:
+                pass
+            return "\n".join(filter(None, lines))
+        
+        dir_tree = get_tree(codebase_path, max_depth=3)
+        
+        # Scan for output/result files and markdown documentation
+        output_files = []
+        markdown_docs = []
+        
+        # Find result/output JSON files
+        for pattern in ['**/results*.json', '**/complete_results.json', '**/output*.json', '**/metrics*.json']:
+            for f in codebase_path.glob(pattern):
+                if 'venv' not in str(f) and '.venv' not in str(f):
+                    rel_path = f.relative_to(codebase_path)
+                    output_files.append(str(rel_path))
+                    if len(output_files) >= 5:
+                        break
+        
+        # Find markdown files (excluding venv)
+        for md_file in codebase_path.rglob('*.md'):
+            if 'venv' not in str(md_file) and '.venv' not in str(md_file):
+                # Read first 500 chars to see if it mentions outputs
+                try:
+                    content = md_file.read_text(encoding='utf-8', errors='ignore')[:500]
+                    if any(keyword in content.lower() for keyword in ['output', 'result', 'report', 'metrics']):
+                        rel_path = md_file.relative_to(codebase_path)
+                        markdown_docs.append({
+                            'path': str(rel_path),
+                            'snippet': content[:300]
+                        })
+                        if len(markdown_docs) >= 3:
+                            break
+                except Exception:
+                    pass
+        
+        output_files_info = "\n".join(f"  - {f}" for f in output_files) if output_files else "None found"
+        markdown_info = ""
+        if markdown_docs:
+            markdown_info = "\n\nMarkdown files mentioning outputs:\n"
+            for doc in markdown_docs:
+                markdown_info += f"\n{doc['path']}:\n{doc['snippet']}...\n"
+        
+        # Build LLM prompt
+        readme_info = f"\nREADME Content:\n```\n{readme_content}\n```\n" if readme_content else ""
+        readme_cmds_info = ""
+        if readme_commands:
+            readme_cmds_info = f"\nParsed README Commands:\n{json.dumps(readme_commands, indent=2)}\n"
+        
+        prompt = f"""You are analyzing a research paper's codebase to generate a configuration file.
+
+Repository: {repo_name}
+Directory Structure:
+```
+{dir_tree}
+```
+
+Main Scripts Found: {', '.join(main_scripts) if main_scripts else 'None'}
+Has requirements.txt: {has_requirements}
+Has setup.py: {has_setup_py}
+{readme_info}{readme_cmds_info}
+
+Dependencies List:
+{chr(10).join(dependencies_list[:10]) if dependencies_list else 'None found'}
+
+Output/Result Files Found:
+{output_files_info}{markdown_info}
+
+Generate a YAML configuration in this EXACT format:
+
+{{
+  "name": "{repo_name}",
+  "path_pattern": "{repo_name.lower()}",
+  "dependencies": ["package1>=1.0.0", "package2>=2.0.0"],
+  "pre_run_setup": [],
+  "experiments": [
+    {{
+      "name": "main_experiment",
+      "type": "python_script",
+      "path": "main.py",
+      "args": ["--config", "config.yaml"],
+      "timeout": 1200,
+      "description": "Main experiment description"
+    }}
+  ],
+  "baseline": {{
+    "save_baseline": true,
+    "baseline_file": "paper_metrics.json"
+  }},
+  "metrics": {{
+    "per_example": false,
+    "extractors": [
+      {{"pattern": "Accuracy[=:]\\\\s*([0-9.]+)", "name": "accuracy"}},
+      {{"pattern": "F1[=:]\\\\s*([0-9.]+)", "name": "f1_score"}}
+    ]
+  }},
+  "outputs": {{
+    "results_file": "results.json",
+    "report_file": "report.md"
+  }},
+  "data_validation": {{
+    "data_dir": "data",
+    "required_files": []
+  }}
+}}
+
+IMPORTANT:
+1. For the experiment path, use EXACTLY one of these main scripts (do not add or remove directories):
+   {', '.join(main_scripts) if main_scripts else 'None'}
+2. Include all dependencies from requirements.txt
+3. Extract metric patterns from README (look for evaluation metrics like Accuracy, F1, Recall, MRR)
+4. For outputs.results_file and outputs.report_file, use the ACTUAL paths found in "Output/Result Files Found" section
+5. If complete_results.json is found, use its actual path (e.g., "code/outputs_all_methods/complete_results.json")
+6. Return ONLY valid JSON, no markdown formatting
+7. DO NOT modify the script paths - use them EXACTLY as listed in "Main Scripts Found"
+
+Return ONLY the JSON configuration:"""
+
+        response = llm_client.query_llm(prompt)
+        if not response:
+            log.warning("LLM returned empty response for config generation")
+            return None
+        
+        # Extract JSON from response
+        def extract_json(text: str) -> Optional[Dict]:
+            """Extract JSON from LLM response."""
+            # Try direct parse
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
+            
+            # Try finding JSON block
+            patterns = [
+                r'```json\s*(.*?)\s*```',
+                r'```\s*(.*?)\s*```',
+                r'\{.*\}',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, text, re.DOTALL)
+                if match:
+                    try:
+                        return json.loads(match.group(1) if '```' in pattern else match.group(0))
+                    except json.JSONDecodeError:
+                        continue
+            return None
+        
+        config_data = extract_json(response)
+        if not config_data or not isinstance(config_data, dict):
+            log.warning("Failed to parse LLM response as JSON")
+            return None
+        
+        # Convert JSON to RepoConfig
+        config = RepoConfig(
+            name=config_data.get('name', repo_name),
+            path_pattern=config_data.get('path_pattern', repo_name.lower()),
+            dependencies=config_data.get('dependencies', []),
+            pre_run_setup=config_data.get('pre_run_setup', []),
+            experiments=config_data.get('experiments', []),
+            baseline=config_data.get('baseline', {'save_baseline': True, 'baseline_file': 'paper_metrics.json'}),
+            metrics=config_data.get('metrics', {'per_example': False, 'extractors': []}),
+            outputs=config_data.get('outputs', {'results_file': 'results.json', 'report_file': 'report.md'}),
+            data_validation=config_data.get('data_validation', {'data_dir': 'data', 'required_files': []})
+        )
+        
+        log.info(f"✓ LLM generated config for {repo_name}")
+        log.debug(f"  Experiments: {len(config.experiments)}")
+        log.debug(f"  Dependencies: {len(config.dependencies)}")
+        
+        return config
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Failed to generate config with LLM: {e}")
+        return None
+
+
+def save_repo_config(config: RepoConfig, output_path: Optional[Path] = None) -> bool:
+    """
+    Save a RepoConfig to YAML file.
+    
+    Args:
+        config: RepoConfig to save
+        output_path: Optional custom path, defaults to configs/repos/{name}.yaml
+        
+    Returns:
+        True if saved successfully
+    """
+    try:
+        if output_path is None:
+            output_path = CONFIGS_DIR / f"{config.name.lower()}.yaml"
+        
+        # Ensure directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert to dict
+        config_dict = {
+            'name': config.name,
+            'path_pattern': config.path_pattern,
+            'dependencies': config.dependencies,
+            'pre_run_setup': config.pre_run_setup,
+            'experiments': config.experiments,
+            'baseline': config.baseline,
+            'metrics': config.metrics,
+            'outputs': config.outputs,
+            'data_validation': config.data_validation
+        }
+        
+        # Write YAML
+        with open(output_path, 'w') as f:
+            yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False, indent=2)
+        
+        logger.info(f"✓ Saved config to {output_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to save config: {e}")
+        return False
 
 
 def get_repo_config(repo_path: Path) -> Optional[RepoConfig]:

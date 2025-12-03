@@ -18,15 +18,19 @@ logger = logging.getLogger(__name__)
 class RepoRetriever:
     """Retrieve code repositories from various sources."""
 
-    def __init__(self, workspace_root: Path = None):
+    def __init__(self, workspace_root: Path = None, llm_client=None, paper_path: Path = None):
         """
         Initialize repository retriever.
 
         Args:
             workspace_root: Root directory of the workspace (defaults to current dir)
+            llm_client: Optional LLM client for semantic codebase matching
+            paper_path: Path to the paper being analyzed (for LLM context)
         """
         self.workspace_root = workspace_root or Path.cwd()
         self.paper_source_dir = self.workspace_root / "papers" / "codebases"
+        self.llm_client = llm_client
+        self.paper_path = paper_path
 
     def retrieve_code(self, github_urls: List[str] = None,
                       local_path: Path = None) -> Optional[Path]:
@@ -69,13 +73,19 @@ class RepoRetriever:
                 return None
             # Check if it's a local path
             elif local_path.exists():
-                # If supplementary_material or decontextualization, prefer 'code' subdir if present
-                if local_path.name in ['supplementary_material', 'decontextualization']:
-                    code_dir = local_path / 'code'
-                    if code_dir.is_dir():
-                        logger.info(
-                            f"✓ Using 'code' directory in {local_path.name}: {code_dir}")
+                # Try to find code subdirectory using LLM if available
+                if self.llm_client:
+                    code_dir = self._llm_find_code_directory(local_path)
+                    if code_dir and code_dir != local_path:
+                        logger.info(f"✓ LLM identified code directory: {code_dir}")
                         return code_dir
+                
+                # Heuristic fallback: check for common 'code' subdirectory
+                code_subdir = local_path / 'code'
+                if code_subdir.is_dir() and self._looks_like_code_dir(code_subdir):
+                    logger.info(f"✓ Using 'code' subdirectory: {code_subdir}")
+                    return code_subdir
+                
                 logger.info(f"✓ Using user-provided codebase: {local_path}")
                 return local_path
             else:
@@ -95,20 +105,27 @@ class RepoRetriever:
                 return cloned_path
 
         # Priority 3: Check papers/codebases directory (fallback)
-        # Only fallback to Decontextualisation codebase if the paper is Decontextualisation
-        paper_name = None
-        if hasattr(self, 'paper_path') and self.paper_path:
-            paper_name = self.paper_path.stem.lower()
-        if paper_name and ('decontextualisation' in paper_name or 'decontextualization' in paper_name):
-            local_code = self._find_local_code()
-            if local_code:
-                logger.info(f"✓ Using local codebase (fallback): {local_code}")
-                return local_code
-        # Otherwise, do not fallback, prompt for codebase or fail gracefully
+        # Try LLM-based semantic matching if available
+        if self.llm_client and self.paper_path:
+            logger.info("Attempting LLM-based semantic codebase matching...")
+            matched_code = self._llm_match_codebase()
+            if matched_code:
+                logger.info(f"✓ Using LLM-matched local codebase: {matched_code}")
+                return matched_code
+        
+        # Fallback: Try to find any local code without LLM
+        local_code = self._find_local_code()
+        if local_code:
+            logger.info(f"✓ Using local codebase (heuristic fallback): {local_code}")
+            return local_code
+        
+        # Otherwise, fail gracefully
         logger.error("❌ No codebase found! Checked:")
         logger.error(f"  - User-provided path: {local_path}")
         logger.error(f"  - GitHub URLs: {github_urls}")
         logger.error(f"  - Local directory: {self.paper_source_dir}")
+        if not self.llm_client:
+            logger.error("  ℹ️  LLM semantic matching unavailable (no llm_client)")
         logger.error(
             "🛑 Please specify a codebase using the --code argument or ensure the paper contains a valid GitHub repository link.")
         return None
@@ -125,15 +142,28 @@ class RepoRetriever:
             return None
 
 
-        # Check common structures for both supplementary_material and decontextualization
+        # Check common code directory structures
+        if not self.paper_source_dir.exists():
+            return None
+        
+        # First try LLM-based directory discovery if available
+        if self.llm_client:
+            for subdir in self.paper_source_dir.iterdir():
+                if subdir.is_dir():
+                    llm_code_dir = self._llm_find_code_directory(subdir)
+                    if llm_code_dir:
+                        return llm_code_dir
+        
+        # Heuristic fallback: check common patterns
         candidates = [
+            self.paper_source_dir / "code",
             self.paper_source_dir / "supplementary_material" / "code",
             self.paper_source_dir / "supplementary_material",
-            self.paper_source_dir / "decontextualization" / "code",
-            self.paper_source_dir / "decontextualization",
-            self.paper_source_dir / "code",
-            self.paper_source_dir
         ]
+        
+        # Add all subdirectories as candidates
+        if self.paper_source_dir.exists():
+            candidates.extend([d for d in self.paper_source_dir.iterdir() if d.is_dir()])
 
         for candidate in candidates:
             if candidate.exists() and self._looks_like_code_dir(candidate):
@@ -279,6 +309,232 @@ class RepoRetriever:
             logger.error(f"Error cloning repository: {e}")
             return None
 
+    def _llm_match_codebase(self) -> Optional[Path]:
+        """Use LLM to semantically match paper to available local codebases."""
+        import json
+        
+        if not self.paper_source_dir.exists():
+            return None
+        
+        available_codebases = [d for d in self.paper_source_dir.iterdir() if d.is_dir()]
+        if not available_codebases:
+            return None
+        
+        # Read paper title and extract initial context
+        paper_title = self.paper_path.stem.replace('_', ' ').replace('-', ' ')
+        
+        # Gather codebase information
+        codebase_info = []
+        for path in available_codebases[:10]:  # Limit to prevent token overflow
+            readme = self._read_codebase_readme(path)
+            codebase_info.append({
+                'name': path.name,
+                'readme_excerpt': readme[:400] if readme else "No README found"
+            })
+        
+        prompt = f"""Given a research paper titled: \"{paper_title}\"
+
+And these available codebases:
+{json.dumps(codebase_info, indent=2)}
+
+Which codebase is most likely the implementation for this paper?
+Consider semantic similarity, matching research topics, and method names.
+If none match well, respond with null.
+
+Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"confidence\": 0.0-1.0, \"reasoning\": \"brief explanation\"}}"""
+
+        try:
+            result = self.llm_client.extract_json(prompt)
+            confidence = result.get('confidence', 0)
+            best_match = result.get('best_match')
+            
+            if best_match and confidence > 0.5:
+                matched_path = self.paper_source_dir / best_match
+                if matched_path.exists():
+                    logger.info(f"LLM matched codebase: {best_match} (confidence: {confidence:.2f})")
+                    logger.debug(f"Reasoning: {result.get('reasoning', 'N/A')}")
+                    return matched_path
+            else:
+                logger.debug(f"LLM found no confident match (confidence: {confidence:.2f})")
+        except Exception as e:
+            logger.warning(f"LLM codebase matching failed: {e}")
+        
+        return None
+    
+    def _llm_find_code_directory(self, base_path: Path) -> Optional[Path]:
+        """Use LLM to identify the main code directory, with heuristics to prefer entry points."""
+        import json
+        
+        if not base_path.is_dir():
+            return None
+        
+        # First try heuristic: look for directories with main/run scripts
+        candidates = []
+        for item in base_path.rglob("*.py"):
+            if any(name in item.name.lower() for name in ['main', 'run', 'train', 'experiment']):
+                candidates.append(item.parent)
+        
+        # Score candidates by how many entry point scripts they have
+        if candidates:
+            from collections import Counter
+            candidate_scores = Counter(candidates)
+            best_candidate = candidate_scores.most_common(1)[0][0]
+            # Prefer the candidate with most entry points, but not nested src dirs if parent has scripts
+            if any(script in [f.name for f in best_candidate.iterdir() if f.is_file()] 
+                   for script in ['main.py', 'run.py', 'train.py', 'experiment.py']):
+                logger.debug(f"Heuristic found code directory with entry points: {best_candidate.relative_to(base_path)}")
+                return best_candidate
+        
+        # Fallback to LLM if heuristics fail
+        dir_tree = self._get_directory_tree(base_path, max_depth=2)
+        
+        # List Python files to help LLM decide
+        python_files = []
+        for py_file in base_path.rglob("*.py"):
+            rel_path = py_file.relative_to(base_path)
+            if len(rel_path.parts) <= 2:  # Only show files up to 2 levels deep
+                python_files.append(str(rel_path))
+        
+        py_files_info = "\n".join(python_files[:15]) if python_files else "No Python files found"
+        
+        prompt = f"""Given this directory structure:
+{dir_tree}
+
+Python files found:
+{py_files_info}
+
+Identify the subdirectory that contains the MAIN EXECUTABLE scripts (like main.py, run.py, train.py).
+Do NOT choose nested 'src' or 'utils' directories if the parent has executable scripts.
+Prefer directories with files like: main.py, run.py, train.py, experiment.py
+If the root is already the code directory, respond with \".\"
+
+Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confidence\": 0.0-1.0, \"reasoning\": \"brief explanation\"}}"""
+
+        try:
+            result = self.llm_client.extract_json(prompt)
+            confidence = result.get('confidence', 0)
+            code_dir = result.get('code_dir', '').strip()
+            
+            if code_dir and confidence > 0.6:  # Increased threshold
+                if code_dir == '.':
+                    logger.debug(f"LLM identified root as code directory (confidence: {confidence:.2f})")
+                    return base_path
+                code_path = base_path / code_dir
+                if code_path.exists():
+                    logger.debug(f"LLM identified code directory: {code_dir} (confidence: {confidence:.2f})")
+                    logger.debug(f"  Reasoning: {result.get('reasoning', 'N/A')}")
+                    return code_path
+        except Exception as e:
+            logger.debug(f"LLM directory discovery failed: {e}")
+        
+        # Final fallback: return base_path if it has Python files
+        if python_files:
+            logger.debug(f"Fallback: using base directory with {len(python_files)} Python files")
+            return base_path
+        
+        return None
+    
+    def _read_codebase_readme(self, path: Path) -> Optional[str]:
+        """Read README file from a codebase directory."""
+        readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md']
+        for name in readme_names:
+            readme_path = path / name
+            if readme_path.exists():
+                try:
+                    return readme_path.read_text(encoding='utf-8', errors='ignore')
+                except Exception:
+                    continue
+        return None
+    
+    def _get_directory_tree(self, path: Path, max_depth: int = 2, current_depth: int = 0, prefix: str = "") -> str:
+        """Generate a simple directory tree string for LLM analysis."""
+        if current_depth >= max_depth:
+            return ""
+        
+        lines = []
+        try:
+            items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+            for item in items[:15]:  # Limit items per directory
+                if item.name.startswith('.'):
+                    continue
+                if item.is_dir():
+                    lines.append(f"{prefix}├── {item.name}/")
+                    if current_depth < max_depth - 1:
+                        lines.append(self._get_directory_tree(item, max_depth, current_depth + 1, prefix + "│   "))
+                else:
+                    # Show file extension
+                    lines.append(f"{prefix}├── {item.name}")
+        except PermissionError:
+            lines.append(f"{prefix}├── [Permission Denied]")
+        
+        return "\n".join(filter(None, lines))
+    
+    def _llm_parse_readme_commands(self, readme_path: Path, codebase_path: Path) -> Optional[Dict[str, Any]]:
+        """
+        Use LLM to parse README and extract experiment run commands.
+        
+        Args:
+            readme_path: Path to README file
+            codebase_path: Root path of the codebase
+            
+        Returns:
+            Dictionary with extracted commands and metadata, or None if parsing fails
+        """
+        if not self.llm_client or not readme_path.exists():
+            return None
+        
+        try:
+            readme_content = readme_path.read_text(encoding='utf-8', errors='ignore')
+            
+            # Get directory structure for context
+            dir_tree = self._get_directory_tree(codebase_path, max_depth=3)
+            
+            prompt = f"""You are analyzing a research paper's codebase README to extract information about how to run experiments.
+
+README Content:
+```
+{readme_content[:4000]}  # Limit to avoid token overflow
+```
+
+Directory Structure:
+```
+{dir_tree}
+```
+
+Extract the following information and return as JSON:
+1. main_script: The primary Python script to run the main experiment (just filename, e.g., "main.py")
+2. main_args: List of command-line arguments for the main script (e.g., ["--config", "config.yaml"])
+3. dependencies: List of pip package requirements mentioned
+4. setup_commands: Any setup/installation commands needed before running
+5. description: Brief description of what the main experiment does
+
+Return ONLY valid JSON in this exact format:
+{{
+  "main_script": "main.py",
+  "main_args": ["--arg1", "value1"],
+  "dependencies": ["package1>=1.0", "package2"],
+  "setup_commands": ["pip install -r requirements.txt"],
+  "description": "Description of the experiment"
+}}
+
+If information is not found, use empty lists [] or empty string "". Return ONLY the JSON object."""
+
+            response = self.llm_client.query_llm(prompt)
+            if not response:
+                return None
+            
+            # Extract JSON from response
+            result = self._extract_json(response)
+            if result and isinstance(result, dict):
+                logger.info(f"✓ LLM parsed README commands from {readme_path.name}")
+                logger.debug(f"  Extracted: {result.get('main_script', 'N/A')}")
+                return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to parse README with LLM: {e}")
+        
+        return None
+
     def get_codebase_info(self, code_path: Path) -> dict:
         """
         Get basic information about the retrieved codebase.
@@ -308,3 +564,22 @@ class RepoRetriever:
         info['file_counts'] = extensions
 
         return info
+    
+    def parse_readme_commands(self, codebase_path: Path) -> Optional[Dict[str, Any]]:
+        """
+        Parse README file to extract experiment run commands using LLM.
+        
+        Args:
+            codebase_path: Path to the codebase root
+            
+        Returns:
+            Dictionary with extracted commands or None if not available
+        """
+        readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md', 'ReadMe.md']
+        for name in readme_names:
+            readme_path = codebase_path / name
+            if readme_path.exists():
+                return self._llm_parse_readme_commands(readme_path, codebase_path)
+        
+        logger.debug(f"No README found in {codebase_path}")
+        return None
