@@ -561,7 +561,18 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
     for exp in config.experiments:
         exp_name = exp.get('name', 'unnamed')
         exp_type = exp.get('type')
-        exp_path = repo_path / exp['path']
+        
+        # Normalize exp['path'] to remove any leading directory that matches repo_path.name
+        exp_rel_path = exp['path']
+        exp_parts = Path(exp_rel_path).parts
+        repo_last_component = repo_path.name  # e.g., 'code'
+        
+        # If the path starts with repo_last_component, remove it
+        # (e.g., if repo_path='...code' and exp_rel_path='code/main.py', use 'main.py')
+        if exp_parts and exp_parts[0] == repo_last_component:
+            exp_rel_path = str(Path(*exp_parts[1:])) if len(exp_parts) > 1 else exp_parts[0]
+        
+        exp_path = repo_path / exp_rel_path
         
         # Generate script if needed
         if exp.get('generate', False) and 'template' in exp:
@@ -607,3 +618,4 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
                     pass  # Ignore cleanup failures
     
     return results
+

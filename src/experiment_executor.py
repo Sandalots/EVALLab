@@ -556,7 +556,16 @@ class ExperimentExecutor:
         self.logger.info(f"[run_experiment] Start time: {start_time_str}")
 
         # Ensure script_path is absolute
-        script_path = config.script_path.resolve()
+        # If script_path is relative, resolve it relative to working_dir, not current working directory
+        script_path = config.script_path
+        if not script_path.is_absolute():
+            # Resolve relative to working_dir first
+            working_dir = Path(config.working_dir) if config.working_dir else Path.cwd()
+            if not working_dir.is_absolute():
+                # If working_dir is also relative, resolve it first
+                working_dir = working_dir.resolve()
+            script_path = working_dir / script_path
+        script_path = script_path.resolve()
 
 
 

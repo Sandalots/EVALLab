@@ -45,8 +45,19 @@ class RepoRetriever:
             local_path: Optional user-provided local codebase path OR GitHub URL string
 
         Returns:
-            Path to the retrieved codebase, or None if not found
+            Path to the retrieved codebase (absolute), or None if not found
         """
+        result = self._retrieve_code_internal(github_urls, local_path)
+        
+        # Ensure returned path is always absolute
+        if result and not result.is_absolute():
+            result = result.resolve()
+        
+        return result
+    
+    def _retrieve_code_internal(self, github_urls: List[str] = None,
+                                local_path: Path = None) -> Optional[Path]:
+        """Internal implementation of retrieve_code - returns paths that may be relative."""
         # Priority 1: User-provided path/URL (explicit override)
         if local_path:
             # Check if it's a GitHub URL (passed as string converted to Path)
