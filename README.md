@@ -47,7 +47,3 @@ The agent uses the following **4-stage pipeline**:
    # If no GitHub repo is found in the paper, the agent will use the provided local codebase path
    # or fallback to papers/codebases/ if available.
    ```
-
-## Performance
-
-**~94.2% success rate** (339/360 metrics matched) with 1.05% mean deviation from baseline results currently when fed the 'Decontextualization' paper using the 'Full Corpus searchspace'.
