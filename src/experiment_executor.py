@@ -24,8 +24,6 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# Removed unused function: ensure_module_in_venv
-
 def _get_python_executable():
     """Get the appropriate Python executable for the current platform."""
     if platform.system() == 'Windows':

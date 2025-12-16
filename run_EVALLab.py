@@ -16,9 +16,9 @@ import json
 import traceback
 import logging
 
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
-
 
 def setup_logging(output_dir):
     log_file = Path(output_dir) / 'agent_execution.log'
