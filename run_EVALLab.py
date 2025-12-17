@@ -6,7 +6,9 @@ initializes the agent's pipeline, and orchestrates the full research paper repro
 ===============================================================================
 """
 
+# use both the reproduction agent from the pipeline plus the colored formatter for the colorful cli logging
 from src.pipeline import ReproductionAgent, ColoredFormatter
+
 import sys
 import time
 import tracemalloc
@@ -26,6 +28,7 @@ def setup_logging(output_dir):
     # Remove all handlers associated with the root logger object.
     root_logger = logging.getLogger()
 
+    # remove existing handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
@@ -38,6 +41,8 @@ def setup_logging(output_dir):
     # Console handler (color)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(ColoredFormatter(datefmt='%Y-%m-%d %H:%M:%S'))
+
+    # add handlers to the root logger
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
 
@@ -47,8 +52,10 @@ def main():
     parser.add_argument('--paper', type=str, help='Path to the research paper PDF')
     parser.add_argument('--code', type=str, help='Path or URL to the codebase')
 
+    # parse cli args
     args = parser.parse_args()
 
+    # start runtime and memory tracking
     start_time = time.time()
     tracemalloc.start()
 
@@ -153,6 +160,7 @@ def main():
     paper_source_dir = workspace_root / paper_dir / "codebases"
 
     paper_path = None
+
     if args.paper:
         # User specified a paper
         paper_path = Path(args.paper)
@@ -256,6 +264,7 @@ def main():
 
     # Check Ollama
     print("\n🔍 Checking Ollama...")
+
     # Create a temporary agent just to check Ollama
     temp_agent = ReproductionAgent()
 
@@ -283,8 +292,8 @@ def main():
 
     if paper_name_for_log:
         paper_stem = paper_name_for_log.lower().replace(' ', '_')
-        output_dir = Path('outputs/visualizations') / paper_stem
 
+        output_dir = Path('outputs/visualizations') / paper_stem
         output_dir.mkdir(parents=True, exist_ok=True)
 
     else:
@@ -309,11 +318,12 @@ def main():
         end_time = time.time()
         runtime_seconds = end_time - start_time
         
+        # get current and peak memory usage
         current, peak = tracemalloc.get_traced_memory()
 
+        # stop tracing memory allocations
         tracemalloc.stop()
         peak_mb = peak / (1024 * 1024)
-
 
         # Save runtime and memory info for HTML report AFTER visualizations are generated
         resource_path = output_dir / 'resource_usage.json'
@@ -408,6 +418,8 @@ def main():
     
     except Exception as e:
         print(f"\n❌ Error: {e}") 
+
+        # print traceback execution details
         traceback.print_exc()
         
         return 1
