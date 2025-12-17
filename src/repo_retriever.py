@@ -232,7 +232,7 @@ class RepoRetriever:
             for subdir in self.paper_source_dir.iterdir():
                 if subdir.is_dir():
                     llm_code_dir = self._llm_find_code_directory(subdir)
-                    
+
                     if llm_code_dir:
                         return llm_code_dir
         
@@ -338,12 +338,15 @@ class RepoRetriever:
                 logger.info(f"✓ Repository already exists: {clone_dir}")
                 logger.info(
                     f"   Skipping clone (delete directory to re-clone)")
+                
                 return clone_dir
+            
             elif clone_dir.exists():
                 # Directory exists but is empty/invalid - remove and re-clone
                 logger.warning(
                     f"Found invalid clone directory, removing: {clone_dir}")
                 import shutil
+
                 shutil.rmtree(clone_dir)
                 logger.info(f"Re-cloning repository...")
 
@@ -361,6 +364,7 @@ class RepoRetriever:
             if result.returncode == 0:
                 logger.info(f"✓ Successfully cloned to: {clone_dir}")
                 return clone_dir
+            
             else:
                 error_msg = result.stderr.strip()
                 logger.error(f"Git clone failed with error:")
@@ -371,11 +375,13 @@ class RepoRetriever:
                     logger.error(f"")
                     logger.error(f"❓ Repository may not exist or is private.")
                     logger.error(f"   Check URL: {github_url}")
+
                 elif 'Could not resolve hostname' in error_msg:
                     logger.error(f"")
                     logger.error(f"🌐 Network/DNS issue. Check:")
                     logger.error(f"   1. Internet connection")
                     logger.error(f"   2. URL format: {github_url}")
+
                 elif 'Permission denied' in error_msg or 'Authentication' in error_msg:
                     logger.error(f"")
                     logger.error(f"🔐 Authentication required. Try:")
@@ -387,6 +393,7 @@ class RepoRetriever:
         except subprocess.TimeoutExpired:
             logger.error("Repository clone timed out after 5 minutes")
             return None
+        
         except Exception as e:
             logger.error(f"Error cloning repository: {e}")
             return None
@@ -407,6 +414,7 @@ class RepoRetriever:
         
         # Gather codebase information
         codebase_info = []
+
         for path in available_codebases[:10]:  # Limit to prevent token overflow
             readme = self._read_codebase_readme(path)
             codebase_info.append({
@@ -432,12 +440,15 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
             
             if best_match and confidence > 0.5:
                 matched_path = self.paper_source_dir / best_match
+
                 if matched_path.exists():
                     logger.info(f"LLM matched codebase: {best_match} (confidence: {confidence:.2f})")
                     logger.debug(f"Reasoning: {result.get('reasoning', 'N/A')}")
                     return matched_path
+                
             else:
                 logger.debug(f"LLM found no confident match (confidence: {confidence:.2f})")
+
         except Exception as e:
             logger.warning(f"LLM codebase matching failed: {e}")
         
@@ -452,15 +463,18 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
         
         # Strong heuristic: prefer a top-level 'code' directory if it contains entry scripts
         code_dir = base_path / 'code'
+
         if code_dir.is_dir():
             entry_names = {'main.py', 'run.py', 'train.py', 'experiment.py', 'main_local_all_new.py'}
             files = {f.name for f in code_dir.glob('*.py')}
+
             if entry_names & files:
                 logger.debug(f"Heuristic preferred 'code' directory: {code_dir.relative_to(base_path)}")
                 return code_dir
 
         # First try heuristic: look for directories with main/run scripts
         candidates = []
+
         for item in base_path.rglob("*.py"):
             if any(name in item.name.lower() for name in ['main', 'run', 'train', 'experiment']):
                 candidates.append(item.parent)
@@ -470,9 +484,11 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
             from collections import Counter
             candidate_scores = Counter(candidates)
             best_candidate = candidate_scores.most_common(1)[0][0]
+
             # Prefer the candidate with most entry points, but not nested src dirs if parent has scripts
             if any(script in [f.name for f in best_candidate.iterdir() if f.is_file()] 
                    for script in ['main.py', 'run.py', 'train.py', 'experiment.py']):
+                
                 logger.debug(f"Heuristic found code directory with entry points: {best_candidate.relative_to(base_path)}")
                 return best_candidate
         
@@ -483,6 +499,7 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
         python_files = []
         for py_file in base_path.rglob("*.py"):
             rel_path = py_file.relative_to(base_path)
+
             if len(rel_path.parts) <= 2:  # Only show files up to 2 levels deep
                 python_files.append(str(rel_path))
         
@@ -510,11 +527,14 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
                 if code_dir == '.':
                     logger.debug(f"LLM identified root as code directory (confidence: {confidence:.2f})")
                     return base_path
+                
                 code_path = base_path / code_dir
+
                 if code_path.exists():
                     logger.debug(f"LLM identified code directory: {code_dir} (confidence: {confidence:.2f})")
                     logger.debug(f"  Reasoning: {result.get('reasoning', 'N/A')}")
                     return code_path
+                
         except Exception as e:
             logger.debug(f"LLM directory discovery failed: {e}")
         
@@ -528,11 +548,14 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
     def _read_codebase_readme(self, path: Path) -> Optional[str]:
         """Read README file from a codebase directory."""
         readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md']
+
         for name in readme_names:
             readme_path = path / name
+
             if readme_path.exists():
                 try:
                     return readme_path.read_text(encoding='utf-8', errors='ignore')
+                
                 except Exception:
                     continue
         return None
@@ -545,16 +568,21 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
         lines = []
         try:
             items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+
             for item in items[:15]:  # Limit items per directory
                 if item.name.startswith('.'):
                     continue
+
                 if item.is_dir():
                     lines.append(f"{prefix}├── {item.name}/")
+
                     if current_depth < max_depth - 1:
                         lines.append(self._get_directory_tree(item, max_depth, current_depth + 1, prefix + "│   "))
+
                 else:
                     # Show file extension
                     lines.append(f"{prefix}├── {item.name}")
+                    
         except PermissionError:
             lines.append(f"{prefix}├── [Permission Denied]")
         
