@@ -1,3 +1,5 @@
+# As EVALLab is a python project, and it can create child venvs we must ensure they are all ignored by git using the following rules.
+
 # Python
 __pycache__/
 *.py[cod]
