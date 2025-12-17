@@ -59,35 +59,48 @@ class RepoRetriever:
         """Internal implementation of retrieve_code - returns paths that may be relative."""
         # Priority 1: User-provided path/URL (explicit override)
         if local_path:
+
             # Check if it's a GitHub URL (passed as string converted to Path)
             local_path_str = str(local_path)
+
             if 'github.com' in local_path_str or local_path_str.startswith('http'):
                 # Special-case: EVALLab repo URL triggers local codebase fetch script
+
                 if 'github.com/Sandalots/EVALLab' in local_path_str:
                     try:
                         logger.info("Detected EVALLab repo link; running scripts/get_codebase.sh to fetch codebase...")
                         script_path = self.workspace_root / 'scripts' / 'get_codebase.sh'
+
                         if not script_path.exists():
                             logger.error(f"Missing script: {script_path}")
+
                         else:
                             subprocess.run(['bash', str(script_path)], check=True)
                             # After fetch, try to locate the code directory
                             code_path = self._find_local_code()
+
                             if code_path:
                                 logger.info(f"✓ Using fetched local codebase: {code_path}")
+
                                 return code_path
+                            
                             else:
                                 logger.warning("Codebase fetch script ran but no code directory was found.")
+
                     except subprocess.CalledProcessError as e:
                         logger.error(f"Failed to run get_codebase.sh: {e}")
-                    # Fall through to normal URL handling if fetch fails
+
+                # Fall through to normal URL handling if fetch fails
                 logger.info(f"User provided GitHub URL: {local_path_str}")
+
                 # Normalize URL format (fix common issues like missing slashes)
                 normalized_url = self._normalize_github_url(local_path_str)
                 cloned_path = self._clone_github_repo(normalized_url)
+                
                 if cloned_path:
                     logger.info(f"✓ Using user-provided GitHub repository")
                     return cloned_path
+                
                 # Clone failed - prompt user for manual clone
                 logger.error(
                     f"❌ Failed to clone user-provided repository: {normalized_url}")
@@ -99,18 +112,22 @@ class RepoRetriever:
                 logger.error(f"")
                 logger.error(
                     f"   Then re-run EVALLab with: --code {self.workspace_root}/papers/codebases/{normalized_url.split('/')[-1].replace('.git', '')}")
+                
                 return None
+            
             # Check if it's a local path
             elif local_path.exists():
                 # Try to find code subdirectory using LLM if available
                 if self.llm_client:
                     code_dir = self._llm_find_code_directory(local_path)
+
                     if code_dir and code_dir != local_path:
                         logger.info(f"✓ LLM identified code directory: {code_dir}")
                         return code_dir
                 
                 # Heuristic fallback: check for common 'code' subdirectory
                 code_subdir = local_path / 'code'
+
                 if code_subdir.is_dir() and self._looks_like_code_dir(code_subdir):
                     logger.info(f"✓ Using 'code' subdirectory: {code_subdir}")
                     return code_subdir
@@ -125,6 +142,7 @@ class RepoRetriever:
         # Priority 2: Clone from GitHub (paper-specific code)
         if github_urls:
             logger.info(f"Found {len(github_urls)} GitHub URL(s) in paper")
+
             for url in github_urls:
                 logger.info(f"  - {url}")
 
@@ -133,37 +151,49 @@ class RepoRetriever:
                 try:
                     logger.info("Detected EVALLab repo link in paper; running scripts/get_codebase.sh to fetch codebase...")
                     script_path = self.workspace_root / 'scripts' / 'get_codebase.sh'
+
                     if not script_path.exists():
                         logger.error(f"Missing script: {script_path}")
+
                     else:
                         subprocess.run(['bash', str(script_path)], check=True)
                         code_path = self._find_local_code()
+
                         if code_path:
                             logger.info(f"✓ Using fetched local codebase: {code_path}")
                             return code_path
+                        
                         else:
                             logger.warning("Codebase fetch script ran but no code directory was found.")
+
                 except subprocess.CalledProcessError as e:
                     logger.error(f"Failed to run get_codebase.sh: {e}")
+
                 # If fetch fails or no code found, skip other GitHub URLs and try fallback
                 # Do not attempt to clone EVALLab repo or other URLs
                 logger.info("Skipping other GitHub URLs; searching for local codebase...")
+
             else:
                 # Only clone non-EVALLab repos
                 cloned_path = self._clone_github_repo(github_urls[0][0])
+
                 if cloned_path:
                     logger.info(f"✓ Using paper-specific GitHub repository")
+
                     return cloned_path        # Priority 3: Check papers/codebases directory (fallback)
+                
         # Try LLM-based semantic matching if available
         if self.llm_client and self.paper_path:
             logger.info("Attempting LLM-based semantic codebase matching...")
             matched_code = self._llm_match_codebase()
+
             if matched_code:
                 logger.info(f"✓ Using LLM-matched local codebase: {matched_code}")
                 return matched_code
         
         # Fallback: Try to find any local code without LLM
         local_code = self._find_local_code()
+
         if local_code:
             logger.info(f"✓ Using local codebase (heuristic fallback): {local_code}")
             return local_code
@@ -173,10 +203,12 @@ class RepoRetriever:
         logger.error(f"  - User-provided path: {local_path}")
         logger.error(f"  - GitHub URLs: {github_urls}")
         logger.error(f"  - Local directory: {self.paper_source_dir}")
+
         if not self.llm_client:
             logger.error("  ℹ️  LLM semantic matching unavailable (no llm_client)")
         logger.error(
             "🛑 Please specify a codebase using the --code argument or ensure the paper contains a valid GitHub repository link.")
+        
         return None
 
     def _find_local_code(self) -> Optional[Path]:
@@ -200,6 +232,7 @@ class RepoRetriever:
             for subdir in self.paper_source_dir.iterdir():
                 if subdir.is_dir():
                     llm_code_dir = self._llm_find_code_directory(subdir)
+                    
                     if llm_code_dir:
                         return llm_code_dir
         
@@ -636,7 +669,7 @@ If information is not found, use empty lists [] or empty string "". Return ONLY 
             Dictionary with extracted commands or None if not available
         """
         readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md', 'ReadMe.md']
-        
+
         for name in readme_names:
             readme_path = codebase_path / name
 

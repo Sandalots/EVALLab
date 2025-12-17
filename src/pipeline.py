@@ -406,6 +406,7 @@ class ReproductionAgent:
 
         try:
             return json.loads(cleaned_response)
+        
         except json.JSONDecodeError:
             # Try to repair with python-json5 if available
             try:
@@ -413,6 +414,7 @@ class ReproductionAgent:
                 import json5
                 logger.warning("Trying to parse with json5 for more tolerant JSON parsing.")
                 return json5.loads(cleaned_response)
+            
             except Exception as e2:
                 logger.error(f"Failed to parse JSON with both stdlib and json5: {e2}")
                 logger.error(f"Full raw EVALLab response:\n{response}")
@@ -461,9 +463,11 @@ class ReproductionAgent:
                 if pdf_files:
                     paper_path = pdf_files[0]
                     logger.info(f"✓ Auto-detected paper: {paper_path.name}")
+
                 else:
                     logger.error("No PDF files found in ./papers/ directory")
                     return {'error': 'No paper PDF found'}
+                
             else:
                 logger.error("./papers/ directory not found")
                 return {'error': 'No paper directory found'}
@@ -473,6 +477,7 @@ class ReproductionAgent:
             logger.error("Ollama is not running or not accessible!")
             logger.error(
                 f"Please start Ollama and ensure it's running at {self.ollama_base_url}")
+            
             return {'error': 'Ollama not available'}
 
         logger.info(f"✓ Connected to Ollama (model: {self.ollama_model})")
@@ -556,6 +561,7 @@ class ReproductionAgent:
         # Pass paper_path context to RepoRetriever for name-based fallbacks
         try:
             self.repo_retriever.paper_path = paper_path
+
         except AttributeError:
             pass  # RepoRetriever may not have paper_path attribute in all configurations
 
@@ -661,10 +667,13 @@ class ReproductionAgent:
 
         # Auto-generate repo config hints from filesystem and save YAML
         from src.helper.repo_config import generate_repo_config_from_filesystem, save_repo_config
+
         repo_config = generate_repo_config_from_filesystem(codebase_info.path)
+
         try:
             save_repo_config(repo_config, None)
             logger.info(f"✓ Auto-generated repo config for {repo_config.name}")
+
         except Exception:
             logger.warning("Could not save auto-generated repo config")
 
@@ -735,10 +744,13 @@ class ReproductionAgent:
             # Ensure methodology and experiments are strings for concatenation
             methodology = paper_content.methodology
             experiments = paper_content.experiments
+
             if isinstance(methodology, list):
                 methodology = "\n".join(str(x) for x in methodology)
+
             if isinstance(experiments, list):
                 experiments = "\n".join(str(x) for x in experiments)
+
             analysis = self.result_evaluator.analyze_differences_with_llm(
                 comparisons,
                 methodology + "\n" + experiments
@@ -870,20 +882,29 @@ class ReproductionAgent:
                 # Recursively flatten nested dicts/lists to extract all strings
                 if isinstance(val, str):
                     return val
+                
                 elif isinstance(val, dict):
                     result = []
+
                     for v in val.values():
                         flat = flatten_section(v)
+
                         if flat:
                             result.append(flat)
+
                     return '\n'.join(result)
+                
                 elif isinstance(val, list):
                     result = []
+
                     for v in val:
                         flat = flatten_section(v)
+
                         if flat:
                             result.append(flat)
+
                     return '\n'.join(result)
+                
                 return ""
 
             default_sections = {k: "" for k in canonical_keys}
@@ -891,20 +912,24 @@ class ReproductionAgent:
                 # For each canonical key, look for synonyms and flatten
                 for canon, synonyms in canonical_keys.items():
                     found = False
+
                     for syn in synonyms:
                         for key in sections:
                             if key.lower() == syn:
                                 val = flatten_section(sections[key])
+
                                 if val:
                                     default_sections[canon] = val
                                     found = True
                                     break
+
                         if found:
                             break
             # If all sections are empty, fallback
             if all(not v.strip() for v in default_sections.values()):
                 logger.warning("LLM returned empty or invalid sections, falling back to regex extraction.")
                 return self._simple_section_extraction(raw_text)
+            
             # If any section is missing, merge in regex fallback for that section
             fallback_sections = self._simple_section_extraction(raw_text)
             for k in default_sections:
@@ -912,6 +937,7 @@ class ReproductionAgent:
                     logger.info(f"Merging fallback content for missing section: {k}")
                     default_sections[k] = fallback_sections[k]
             return default_sections
+        
         except Exception as e:
             logger.error(f"Failed to extract sections with LLM: {e}")
             logger.debug(f"Attempting simple text extraction as fallback...")
@@ -976,9 +1002,11 @@ class ReproductionAgent:
             abstract_match = re.search(r'(?i)abstract[:\s\n]+(.*?)(?=\n\n|\n[A-Z])', text, re.DOTALL)
             if abstract_match:
                 sections['abstract'] = abstract_match.group(1).strip()[:2000]
+
             else:
                 # fallback: take first 1000 chars from top of document as abstract
                 sections['abstract'] = text[:1000].strip()
+
             return sections
 
         # Build a list of (header, start, end)
@@ -994,21 +1022,26 @@ class ReproductionAgent:
             header_lower = header_text.lower()
             canonical = section_map.get(header_lower)
             content = text[start:end].strip()
+
             if canonical:
                 sections[canonical] += content + '\n'
             else:
+
                 # Fuzzy keyword mapping for non-exact headers
                 if header_lower == 'abstract':
                     sections['abstract'] = content[:2000]
                     continue
+
                 # Methodology
                 if any(kw in header_lower for kw in methodology_keywords):
                     sections['methodology'] += content + '\n'
                     continue
+
                 # Experiments
                 if any(kw in header_lower for kw in experiments_keywords):
                     sections['experiments'] += content + '\n'
                     continue
+
                 # Results
                 if any(kw in header_lower for kw in results_keywords):
                     sections['results'] += content + '\n'
@@ -1017,36 +1050,11 @@ class ReproductionAgent:
         for k in sections:
             if k in ("methodology", "experiments"):
                 sections[k] = sections[k][:8000]
+
             else:
                 sections[k] = sections[k][:4000]
+                
         return sections
-
-        for key, value in data.items():
-            current_key = f"{prefix}/{key}" if prefix else key
-
-            if isinstance(value, dict):
-                # Check if this dict contains metrics
-                if 'metrics' in value:
-                    # Extract metrics from this level
-                    metric_dict = value['metrics']
-                    for metric_name, metric_value in metric_dict.items():
-                        if isinstance(metric_value, dict):
-                            # Handle metrics with multiple thresholds (e.g., recall@1, recall@5)
-                            for threshold, val in metric_value.items():
-                                if isinstance(val, (int, float)):
-                                    metrics[f"{metric_name}@{threshold}"] = float(val)
-                        elif isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
-                            metrics[metric_name] = float(metric_value)
-                else:
-                    # Recurse into nested dicts
-                    nested = self._extract_metrics_from_nested_dict(
-                        value, current_key)
-                    metrics.update(nested)
-            elif isinstance(value, (int, float)) and not isinstance(value, bool):
-                # Direct numeric value
-                metrics[current_key] = float(value)
-
-        return metrics
 
     def _run_experiments_unified(self, paper_content: PaperContent,
                                  codebase_info: CodebaseInfo) -> list:
@@ -1206,13 +1214,16 @@ class ReproductionAgent:
         metrics = {}
         if paper_content.results:
             metrics = self._extract_metrics_from_text(paper_content.results)
+
         # Optionally, also try from experiments or methodology if results is empty
         if not metrics and paper_content.experiments:
             metrics = self._extract_metrics_from_text(paper_content.experiments)
+
         if metrics:
             with open(output_dir / 'paper_metrics.json', 'w') as f:
                 json.dump(metrics, f, indent=2)
             logger.info(f"Extracted paper metrics: {metrics}")
+
         else:
             logger.warning("No paper metrics found in results section.")
 
@@ -1248,6 +1259,7 @@ class ReproductionAgent:
             if log_file.exists():
                 with open(log_file, 'r', encoding='utf-8') as log:
                     f.write(log.read())
+                    
             else:
                 f.write("[Log file not found]\n")
 

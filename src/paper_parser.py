@@ -81,15 +81,17 @@ class PaperParser:
             # Remove trailing characters that are not valid in GitHub repo URLs
             # Remove trailing .N, .N., .N], .N), .N}, .N; etc. (where N is one or more digits)
             url = re.sub(r'(\.[0-9]+([\]\)\}}\.,;:!])*)+$', '', url)
+
             # Remove trailing punctuation
             url = re.sub(r'[\.,;:!\)\]\}]+$', '', url)
+            
             # Remove trailing reference numbers in brackets (e.g., [1], [12])
             url = re.sub(r'\[[0-9]+\]$', '', url)
             
             # Additional safety: ensure URL ends at proper boundary (repo name or .git)
             # Remove any trailing word characters that come after the repo name
             match = re.match(r'(https?://github\.com/[\w\-]+/[\w\-]+(?:\.git)?)', url)
-            
+
             if match:
                 url = match.group(1)
             
