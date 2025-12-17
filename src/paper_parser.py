@@ -73,6 +73,7 @@ class PaperParser:
         urls = self.github_pattern.findall(text)
         
         cleaned_urls = []
+
         for url in urls:
             # Remove ALL whitespace from the URL (handles split URLs)
             url = re.sub(r'\s+', '', url)
@@ -88,6 +89,7 @@ class PaperParser:
             # Additional safety: ensure URL ends at proper boundary (repo name or .git)
             # Remove any trailing word characters that come after the repo name
             match = re.match(r'(https?://github\.com/[\w\-]+/[\w\-]+(?:\.git)?)', url)
+            
             if match:
                 url = match.group(1)
             

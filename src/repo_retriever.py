@@ -33,8 +33,7 @@ class RepoRetriever:
         self.llm_client = llm_client
         self.paper_path = paper_path
 
-    def retrieve_code(self, github_urls: List[str] = None,
-                      local_path: Path = None) -> Optional[Path]:
+    def retrieve_code(self, github_urls: List[str] = None, local_path: Path = None) -> Optional[Path]:
         """
         Retrieve code from available sources with the following priority:
         1. User-provided path/URL (--code argument) - local path OR GitHub URL
@@ -56,8 +55,7 @@ class RepoRetriever:
         
         return result
     
-    def _retrieve_code_internal(self, github_urls: List[str] = None,
-                                local_path: Path = None) -> Optional[Path]:
+    def _retrieve_code_internal(self, github_urls: List[str] = None, local_path: Path = None) -> Optional[Path]:
         """Internal implementation of retrieve_code - returns paths that may be relative."""
         # Priority 1: User-provided path/URL (explicit override)
         if local_path:
@@ -638,6 +636,7 @@ If information is not found, use empty lists [] or empty string "". Return ONLY 
         readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md', 'ReadMe.md']
         for name in readme_names:
             readme_path = codebase_path / name
+
             if readme_path.exists():
                 return self._llm_parse_readme_commands(readme_path, codebase_path)
         

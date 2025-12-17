@@ -36,6 +36,7 @@ def setup_logging(output_dir):
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
 
+# entrypoint for EVALLab
 def main():
     parser = argparse.ArgumentParser(description="EVALLab: Automated Research Reproduction Agent")
     parser.add_argument('--paper', type=str, help='Path to the research paper PDF')
@@ -353,6 +354,7 @@ def main():
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")
         return 1
+    
     except Exception as e:
         print(f"\n❌ Error: {e}") 
         traceback.print_exc()

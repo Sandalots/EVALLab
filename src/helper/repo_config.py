@@ -580,6 +580,7 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
                 exp_path.write_text(exp['template'])
                 exp_path.chmod(0o755)
                 logger.info(f"  → Generated {exp_path.name}")
+                
             except Exception as e:
                 logger.warning(f"  ⚠ Failed to generate {exp_path.name}: {e}")
                 continue
@@ -605,15 +606,19 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
             
             if result.success:
                 logger.info(f"  ✓ {exp_name} complete (duration: {result.duration:.2f}s)")
+
             else:
                 logger.warning(f"  ✗ {exp_name} failed")
+
         except Exception as e:
             logger.error(f"  ✗ Failed to run {exp_name}: {e}")
+
         finally:
             # Clean up temp file if created
             if actual_path != exp_path and actual_path.exists():
                 try:
                     actual_path.unlink()
+
                 except OSError:
                     pass  # Ignore cleanup failures
     

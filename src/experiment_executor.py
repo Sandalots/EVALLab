@@ -109,11 +109,14 @@ class ExperimentExecutor:
                 # Skip baseline_metrics.json - it's for comparison, not experiment output
                 if output_file.name == 'baseline_metrics.json':
                     continue
+
                 try:
                     with open(output_file, 'r') as f:
                         outputs[output_file.name] = json.load(f)
+
                 except Exception as e:
                     self.logger.debug(f"Could not parse {output_file}: {e}")
+
         return outputs
 
     def __init__(self, config=None, paper_name=None):
@@ -126,6 +129,7 @@ class ExperimentExecutor:
         """
         self.config = config or {}
         self.logger = logger
+
         if paper_name:
             log_filename = f"agent_execution_{paper_name}.log"
             file_handler = logging.FileHandler(log_filename)
@@ -967,6 +971,7 @@ class ExperimentExecutor:
         except subprocess.TimeoutExpired:
             duration = time.time() - start_time
             self.logger.error(f"Experiment timed out after {config.timeout} seconds")
+            
             return ExperimentResult(
                 success=False,
                 stdout="",
@@ -978,6 +983,7 @@ class ExperimentExecutor:
             duration = time.time() - start_time
             tb = traceback.format_exc()
             self.logger.error(f"Experiment failed with error: {e}\n{tb}")
+
             return ExperimentResult(
                 success=False,
                 stdout="",

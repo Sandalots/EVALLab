@@ -14,6 +14,7 @@ def _build_metrics_table_rows(df):
         HTML string with <tr> rows
     """
     rows = []
+
     for row in df.itertuples(index=False):
         # Safely coerce values to numeric for display
         pd_val = pd.to_numeric(row.percent_difference, errors='coerce')
@@ -27,6 +28,7 @@ def _build_metrics_table_rows(df):
         pd_str = f"{pd_val:+.2f}%" if not pd.isna(pd_val) else str(row.percent_difference)
         
         status_class = 'status-pass' if row.within_threshold else 'status-fail'
+
         rows.append(
             f"<tr>"
             f"<td>{row.configuration}</td>"
@@ -87,22 +89,26 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     """
     runtime_seconds = None
     peak_memory_mb = None
+
     if output_dir is None:
         output_dir = Path(files['overall_performance']).parent if 'overall_performance' in files else Path('.')
+
     try:
         resource_path = output_dir / 'resource_usage.json'
         with open(resource_path, 'r') as f:
             usage = json.load(f)
             runtime_seconds = usage.get('runtime_seconds')
             peak_memory_mb = usage.get('peak_memory_mb')
+
         if runtime_seconds is None or peak_memory_mb is None:
             logging.warning(f"resource_usage.json found but contains None values: {usage}")
+
         else:
             logging.info(f"Loaded resource_usage.json: runtime_seconds={runtime_seconds}, peak_memory_mb={peak_memory_mb}")
+
     except Exception as e:
         logging.warning(f"Failed to load resource_usage.json: {e}")
  
-
     # Metrics summary
     total_comparisons = len(df) if df is not None else 0
     passing = int(df['within_threshold'].sum()) if (df is not None and 'within_threshold' in df.columns) else 0
@@ -113,10 +119,14 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     def _safe_abs_agg(col_name, agg_fn, default='N/A'):
         if df is None or col_name not in df.columns:
             return default
+        
         series_num = pd.to_numeric(df[col_name], errors='coerce')
+
         if series_num.notna().sum() == 0:
             return default
+        
         val = agg_fn(series_num.abs())
+
         return f"{val:.2f}%" if not pd.isna(val) else default
 
     mean_abs_dev = _safe_abs_agg('percent_difference', lambda s: s.mean())
@@ -126,10 +136,14 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     def _safe_std(col_name):
         if df is None or col_name not in df.columns:
             return 'N/A'
+        
         series_num = pd.to_numeric(df[col_name], errors='coerce')
+
         if series_num.notna().sum() == 0:
             return 'N/A'
+        
         val = series_num.std()
+
         return f"{val:.2f}%" if not pd.isna(val) else 'N/A'
     
     std_dev = _safe_std('percent_difference')
@@ -137,8 +151,10 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     # Style success rate: green >=80%, orange 50-80%, red <50%
     if success_rate >= 80:
         sr_class = 'success-high'
+
     elif success_rate >= 50:
         sr_class = 'success-mid'
+
     else:
         sr_class = 'success-low'
 
@@ -183,6 +199,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         table_html += '<tr><th>Configuration</th><th>Metric</th><th>Baseline</th><th>Reproduced</th><th>Diff (%)</th><th>Status</th></tr>'
         table_html += _build_metrics_table_rows(df)
         table_html += '</table></div>'
+
         if 'detailed_csv' in files:
             table_html += f'<a href="{files["detailed_csv"].name}">Download detailed_comparison.csv</a>'
         table_html += '</div>'
@@ -193,6 +210,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         try:
             log_content = files['agent_log'].read_text(encoding='utf-8')
             log_html = f'''<div class="agent-log"><h3>EVALLab Execution Log for this Research Paper:</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide EVALLab Log</summary><pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', 'monospace', 'Segoe UI Emoji', 'Noto Color Emoji'; font-size: 15px; white-space: pre; background: #222; color: #eee; border-radius: 6px; padding: 12px; overflow-x: auto;">{html_module.escape(log_content)}</pre></details></div>'''
+        
         except Exception as e:
             log_html = f'<div class="agent-log"><b>Could not load agent log: {e}</b></div>'
 

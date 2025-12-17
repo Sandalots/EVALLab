@@ -1,9 +1,13 @@
+#!/bin/zsh
+
+# A script to get the codebase of a given input paper for EVALLab
 set -e
 
 # Determine script and repo root directories
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# change directory to repo root
 cd "$REPO_DIR"
 
 # Check if papers/codebases/decontextualization directory exists
@@ -44,10 +48,12 @@ if [ ! -d "papers/codebases/decontextualization" ]; then
       echo "Alternatively, manually download the codebase from https://openreview.net/attachment?id=cK8YYMc65B&name=supplementary_material and place it in papers/codebases/decontextualization"
       exit 1
     fi
+
   else
     echo "Please manually download the Decontextualization codebase from https://openreview.net/attachment?id=cK8YYMc65B&name=supplementary_material and place it in papers/codebases/decontextualization"
     exit 1
   fi
+
 else
   echo "Decontextualization codebase found."
 fi
