@@ -614,7 +614,9 @@ If information is not found, use empty lists [] or empty string "". Return ONLY 
 
         # Count files by extension
         extensions = {}
+
         for file in code_path.rglob('*'):
+
             if file.is_file() and not any(p.startswith('.') for p in file.parts):
                 ext = file.suffix
                 extensions[ext] = extensions.get(ext, 0) + 1
@@ -634,6 +636,7 @@ If information is not found, use empty lists [] or empty string "". Return ONLY 
             Dictionary with extracted commands or None if not available
         """
         readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md', 'ReadMe.md']
+        
         for name in readme_names:
             readme_path = codebase_path / name
 

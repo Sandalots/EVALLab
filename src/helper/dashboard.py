@@ -95,6 +95,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     try:
         resource_path = output_dir / 'resource_usage.json'
+
         with open(resource_path, 'r') as f:
             usage = json.load(f)
             runtime_seconds = usage.get('runtime_seconds')
@@ -117,6 +118,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
     
     # Use numeric column if available; else try coerce and default to N/A
     def _safe_abs_agg(col_name, agg_fn, default='N/A'):
+
         if df is None or col_name not in df.columns:
             return default
         
@@ -184,6 +186,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
         ('summary_statistics', 'Summary Statistics'),
     ]
     for key, caption in plot_keys:
+
         if key in files:
             img_path = files[key].name
             viz_html += f'<div class="viz-section"><h3>{caption}</h3><img src="{img_path}" style="max-width:90%;margin:20px 0;box-shadow:0 2px 8px #ccc;border-radius:8px;"></div>'
@@ -202,11 +205,13 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
         if 'detailed_csv' in files:
             table_html += f'<a href="{files["detailed_csv"].name}">Download detailed_comparison.csv</a>'
+
         table_html += '</div>'
 
     # Agent log
     log_html = ""
     if 'agent_log' in files and files['agent_log'].exists():
+        
         try:
             log_content = files['agent_log'].read_text(encoding='utf-8')
             log_html = f'''<div class="agent-log"><h3>EVALLab Execution Log for this Research Paper:</h3><details style="white-space:pre-wrap; background:#f8f8f8; border:1px solid #ccc; padding:10px; border-radius:6px; max-height:400px; overflow:auto;"><summary>Show/Hide EVALLab Log</summary><pre style="font-family: 'Fira Mono', 'Consolas', 'Menlo', 'monospace', 'Segoe UI Emoji', 'Noto Color Emoji'; font-size: 15px; white-space: pre; background: #222; color: #eee; border-radius: 6px; padding: 12px; overflow-x: auto;">{html_module.escape(log_content)}</pre></details></div>'''

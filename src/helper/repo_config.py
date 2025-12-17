@@ -92,6 +92,7 @@ def load_all_configs() -> Dict[str, RepoConfig]:
             config = RepoConfig.from_yaml(yaml_file)
             configs[config.name] = config
             logger.debug(f"Loaded config for {config.name} from {yaml_file.name}")
+
         except Exception as e:
             logger.error(f"Failed to load config {yaml_file.name}: {e}")
     
@@ -132,12 +133,15 @@ def llm_generate_repo_config(
         # Read README if available and not pre-parsed
         readme_content = ""
         readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md']
+
         for name in readme_names:
             readme_path = codebase_path / name
+
             if readme_path.exists():
                 try:
                     readme_content = readme_path.read_text(encoding='utf-8', errors='ignore')[:3000]
                     break
+
                 except Exception:
                     continue
         
@@ -146,6 +150,7 @@ def llm_generate_repo_config(
         
         # Find main scripts with their ACTUAL relative paths
         main_scripts = []
+
         for f in python_files:
             if 'main' in f.name.lower() or 'run' in f.name.lower() or 'train' in f.name.lower():
                 rel_path = f.relative_to(codebase_path)
@@ -156,10 +161,12 @@ def llm_generate_repo_config(
         
         # Read requirements if available
         dependencies_list = []
+
         if has_requirements:
             try:
                 reqs = (codebase_path / 'requirements.txt').read_text()
                 dependencies_list = [line.strip() for line in reqs.split('\n') if line.strip() and not line.startswith('#')][:15]
+
             except Exception:
                 pass
         
@@ -167,20 +174,27 @@ def llm_generate_repo_config(
         def get_tree(path: Path, max_depth: int = 2, current_depth: int = 0) -> str:
             if current_depth >= max_depth:
                 return ""
+            
             lines = []
+
             try:
                 items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+
                 for item in items[:12]:
                     if item.name.startswith('.'):
                         continue
+
                     prefix = "  " * current_depth
                     if item.is_dir():
                         lines.append(f"{prefix}{item.name}/")
                         lines.append(get_tree(item, max_depth, current_depth + 1))
+
                     else:
                         lines.append(f"{prefix}{item.name}")
+
             except PermissionError:
                 pass
+
             return "\n".join(filter(None, lines))
         
         dir_tree = get_tree(codebase_path, max_depth=3)
@@ -195,6 +209,7 @@ def llm_generate_repo_config(
                 if 'venv' not in str(f) and '.venv' not in str(f):
                     rel_path = f.relative_to(codebase_path)
                     output_files.append(str(rel_path))
+
                     if len(output_files) >= 5:
                         break
         
@@ -488,10 +503,6 @@ def get_repo_config(repo_path: Path) -> Optional[RepoConfig]:
     logger.debug(f"No config found for repo {repo_name}")
     return None
 
-
-# Removed unused function: list_supported_repos
-
-
 # ============================================================================
 # Execution Helpers
 # ============================================================================
@@ -522,6 +533,7 @@ def execute_pre_run_setup(config: RepoConfig, repo_path: Path, logger: logging.L
         
         if action_type == 'patch_file':
             file_path = repo_path / action['file']
+            
             if file_path.exists():
                 try:
                     content = file_path.read_text()
@@ -532,12 +544,14 @@ def execute_pre_run_setup(config: RepoConfig, repo_path: Path, logger: logging.L
                         patched = content.replace(search, replace)
                         file_path.write_text(patched)
                         logger.info(f"  → Patched {action['file']}: {action.get('description', '')}")
+
                 except Exception as e:
                     logger.warning(f"  ⚠ Failed to patch {action['file']}: {e}")
         
         elif action_type == 'run_command':
             try:
                 working_dir = repo_path / action.get('working_dir', '.')
+
                 result = subprocess.run(
                     action['command'],
                     shell=True,
@@ -548,8 +562,10 @@ def execute_pre_run_setup(config: RepoConfig, repo_path: Path, logger: logging.L
                 )
                 if result.returncode == 0:
                     logger.info(f"  → Ran command: {action['command']}")
+
                 else:
                     logger.warning(f"  ⚠ Command failed: {result.stderr[:200]}")
+
             except Exception as e:
                 logger.warning(f"  ⚠ Failed to run command: {e}")
 
@@ -580,7 +596,7 @@ def execute_experiments(config: RepoConfig, repo_path: Path, logger: logging.Log
                 exp_path.write_text(exp['template'])
                 exp_path.chmod(0o755)
                 logger.info(f"  → Generated {exp_path.name}")
-                
+
             except Exception as e:
                 logger.warning(f"  ⚠ Failed to generate {exp_path.name}: {e}")
                 continue
