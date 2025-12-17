@@ -29,14 +29,19 @@ def _get_python_executable():
     if platform.system() == 'Windows':
         # Try python first, then py launcher
         for cmd in ['python', 'py']:
+
             try:
                 result = subprocess.run(
                     [cmd, '--version'], capture_output=True, text=True)
+                
                 if result.returncode == 0:
                     return cmd
+                
             except FileNotFoundError:
                 continue
+
         return 'python'  # fallback
+    
     else:
         # Unix/macOS - prefer python3
         return 'python3'
@@ -52,6 +57,7 @@ def _get_venv_paths(venv_path: Path):
         scripts_dir = venv_path / 'Scripts'
         python_exe = scripts_dir / 'python.exe'
         pip_exe = scripts_dir / 'pip.exe'
+
     else:
         scripts_dir = venv_path / 'bin'
         python_exe = scripts_dir / 'python'
@@ -104,6 +110,7 @@ class ExperimentExecutor:
         outputs = {}
         # Look for common output patterns
         output_patterns = ('output*.json', 'results*.json', '*.json')
+
         for pattern in output_patterns:
             for output_file in working_dir.glob(pattern):
                 # Skip baseline_metrics.json - it's for comparison, not experiment output
@@ -232,11 +239,14 @@ class ExperimentExecutor:
         def sort_key(p: Path):
             name = p.stem.lower()
             for i, prefix in enumerate(priority_order):
+
                 if name.startswith(prefix):
                     return i
+                
             return len(priority_order)
 
         entry_points.sort(key=sort_key)
+
         return entry_points
 
     def _extract_dependencies(self, path: Path, language: str) -> List[str]:
@@ -245,6 +255,7 @@ class ExperimentExecutor:
 
         # Auto-detect additional dependencies from entry script imports
         entry_points = self._find_entry_points(path, language)
+
         if entry_points:
             main_script = entry_points[0]
             try:
@@ -253,10 +264,12 @@ class ExperimentExecutor:
                 ).startswith(('import', 'from'))]
                 import_text = ' '.join(import_lines)
                 dependencies_set = set(dependencies)
+
                 for dep in ('numpy', 'matplotlib', 'torch', 'torchvision'):
                         if dep in import_text and dep not in dependencies_set:
                             dependencies.append(dep)
                             dependencies_set.add(dep)
+
             except OSError as e:
                 self.logger.warning(f"Error auto-detecting dependencies from entry script: {e}")
 
@@ -271,46 +284,60 @@ class ExperimentExecutor:
             found_req = False
             for req_name in req_files:
                 req_file = path / req_name
+
                 if req_file.exists():
                     found_req = True
                     self.logger.info(
                         f"✓ Found requirements file: {req_file.name}")
+                    
                     try:
                         with open(req_file) as f:
                             dependencies_set = set(dependencies)
+
                             for line in f:
                                 line = line.strip()
+
                                 if line and not line.startswith('#'):
                                     dep = line.split('#')[0].strip()
+
                                     if dep and dep not in dependencies_set:
                                         dependencies.append(dep)
                                         dependencies_set.add(dep)
+
                     except Exception as e:
                         self.logger.warning(
                             f"Error reading {req_file.name}: {e}")
 
             setup_file = path / 'setup.py'
+
             if setup_file.exists():
                 try:
                     content = setup_file.read_text(encoding='utf-8')
+
                     if 'install_requires' in content:
                         self.logger.debug("Found install_requires in setup.py")
+
                 except OSError as e:
                     self.logger.warning(f"Error reading setup.py: {e}")
 
             # If no requirements.txt, parse README for PyTorch
             if not found_req:
                 readme_path = path / 'README.md'
+
                 if readme_path.exists():
                     try:
                         readme = readme_path.read_text(encoding='utf-8').lower()
+
                         if 'pytorch' in readme or 'torchvision' in readme:
                             self.logger.info(
                                 "✓ README mentions PyTorch, adding torch and torchvision to dependencies")
+                            
                             if 'torch' not in dependencies:
                                 dependencies.append('torch')
+
                             if 'torchvision' not in dependencies:
                                 dependencies.append('torchvision')
+
                     except OSError as e:
                         self.logger.warning(f"Error reading README.md: {e}")
 
@@ -322,9 +349,11 @@ class ExperimentExecutor:
 
         for name in readme_names:
             readme_path = path / name
+
             if readme_path.exists():
                 try:
                     return readme_path.read_text(encoding='utf-8')
+                
                 except Exception as e:
                     logger.warning(f"Error reading {name}: {e}")
 
@@ -360,6 +389,7 @@ class ExperimentExecutor:
         if not data_dir.exists():
             results['valid'] = False
             results['warnings'].append(f"Data directory not found: {data_dir}")
+
             return results
 
         # Get required files from config
@@ -428,15 +458,19 @@ class ExperimentExecutor:
 
         # Check if venv is already set up and dependencies installed
         venv_ready = False
+
         if venv_exists:
             python_executable, _, _ = _get_venv_paths(venv_path)
+
             # Check if python executable is actually accessible (not a broken symlink)
             if not python_executable.exists():
                 logger.warning(f"Virtual environment exists but python executable is broken. Recreating venv...")
                 shutil.rmtree(venv_path)
                 venv_exists = False
+
             elif requirements_path.exists():
                 logger.info("Installing all dependencies from requirements.txt in venv...")
+
                 try:
                     result = subprocess.run(
                         [str(python_executable), '-m', 'pip', 'install', '-r', str(requirements_path)],
@@ -447,9 +481,11 @@ class ExperimentExecutor:
                     )
                     logger.info("✓ Installed all requirements from requirements.txt")
                     venv_ready = True
+
                 except subprocess.CalledProcessError as e:
                     logger.error(f"✗ Failed to install requirements.txt: {e.stderr}")
                     return False
+                
                 except subprocess.TimeoutExpired:
                     logger.error(f"✗ Timeout installing requirements.txt after 30 minutes")
                     return False
@@ -459,28 +495,32 @@ class ExperimentExecutor:
             # Try python3.10, then python3.11, then error if neither is found
             python_versions = ["python3.10", "python3.11"]
             python_cmd = None
+
             for py in python_versions:
                 try:
                     result = subprocess.run([py, '--version'], capture_output=True, text=True)
+
                     if result.returncode == 0:
                         python_cmd = py
                         break
+
                 except FileNotFoundError:
                     continue
+
             if not python_cmd:
                 logger.error("Python 3.10 or 3.11 is required but not found in PATH. Please install one of these versions.")
                 return False
+            
             try:
                 subprocess.run(
                     [python_cmd, '-m', 'venv', str(venv_path)],
                     check=True,
                     capture_output=True
                 )
+
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to create virtual environment: {e}")
                 return False
-
-
         # Environment setup complete
 
         # Install dependencies if not already installed
@@ -501,18 +541,22 @@ class ExperimentExecutor:
                         timeout=1800  # 30 minute timeout
                     )
                     logger.info(f"✓ Installed: {dep}")
+
                 except subprocess.CalledProcessError as e:
                     logger.error(f"✗ Failed to install {dep}: {e.stderr}")
                     return False
+                
                 except subprocess.TimeoutExpired:
                     logger.error(f"✗ Timeout installing {dep} after 30 minutes")
                     return False
+                
             logger.info("✓ All dependencies installed successfully")
 
         # Always install the repo as a package if setup.py or pyproject.toml is present
         python_executable, _, _ = _get_venv_paths(venv_path)
         setup_py = codebase_path / 'setup.py'
         pyproject = codebase_path / 'pyproject.toml'
+
         if setup_py.exists() or pyproject.exists():
             logger.info("Installing repo as a package in its venv (pip install -e .)")
             try:
@@ -523,10 +567,13 @@ class ExperimentExecutor:
                     text=True,
                     timeout=600
                 )
+
                 logger.info("✓ Installed repo as editable package")
+
             except subprocess.CalledProcessError as e:
                 logger.error(f"✗ Failed to install repo as package: {e.stderr}")
                 return False
+            
             except subprocess.TimeoutExpired:
                 logger.error(f"✗ Timeout installing repo as package after 10 minutes")
                 return False
@@ -560,29 +607,36 @@ class ExperimentExecutor:
         # Ensure script_path is absolute
         # If script_path is relative, resolve it relative to working_dir, not current working directory
         script_path = config.script_path
+
         if not script_path.is_absolute():
             # Resolve relative to working_dir first
             working_dir = Path(config.working_dir) if config.working_dir else Path.cwd()
+
             if not working_dir.is_absolute():
                 # If working_dir is also relative, resolve it first
                 working_dir = working_dir.resolve()
+
             script_path = working_dir / script_path
+
         script_path = script_path.resolve()
-
-
 
         # Robust venv detection: prefer repo venvs (venv or .venv), fallback to workspace .venv, then system python
         def find_python_in_venvs(base_dirs):
             venv_names = ('venv', '.venv')
+
             for base_dir in base_dirs:
                 for venv_name in venv_names:
                     venv_path = base_dir / venv_name
+
                     if platform.system() == 'Windows':
                         py = venv_path / 'Scripts' / 'python.exe'
+
                     else:
                         py = venv_path / 'bin' / 'python'
+
                     if py.exists() and os.access(py, os.X_OK):
                         return str(py)
+                    
             return None
 
         workspace_root = Path(__file__).parent.parent
@@ -591,26 +645,35 @@ class ExperimentExecutor:
 
         # If running in papers/codebases (formerly cloned_repos), prefer venvs in repo root and working dir
         codebases_dir = workspace_root / 'papers' / 'codebases'
+
         if str(config.working_dir).startswith(str(codebases_dir)):
             repo_root = Path(config.working_dir)
+
             # Try working dir and its parent (repo root)
             python_cmd = find_python_in_venvs([repo_root, repo_root.parent])
+
             if python_cmd:
                 self.logger.info(f"[run_experiment] Using repo venv Python: {python_cmd}")
+
             elif workspace_venv_python.exists():
                 python_cmd = str(workspace_venv_python)
                 self.logger.info(f"[run_experiment] Fallback to workspace .venv Python: {python_cmd}")
+
             else:
                 python_cmd = _get_python_executable()
                 self.logger.info(f"[run_experiment] Fallback to system Python: {python_cmd}")
+
         else:
             # For non-cloned_repos, try venvs in working dir, then workspace venv, then system
             python_cmd = find_python_in_venvs([Path(config.working_dir)])
+
             if python_cmd:
                 self.logger.info(f"[run_experiment] Using venv Python: {python_cmd}")
+
             elif workspace_venv_python.exists():
                 python_cmd = str(workspace_venv_python)
                 self.logger.info(f"[run_experiment] Fallback to workspace .venv Python: {python_cmd}")
+
             else:
                 python_cmd = _get_python_executable()
                 self.logger.info(f"[run_experiment] Fallback to system Python: {python_cmd}")
@@ -619,7 +682,6 @@ class ExperimentExecutor:
         # (venv wrappers are symlinks that set up PYTHONPATH correctly)
         if python_cmd and not os.path.isabs(python_cmd):
             python_cmd = Path(python_cmd).absolute().as_posix()
-
 
         # Detect if this is a test script (pytest)
         is_test_script = (
@@ -651,11 +713,14 @@ class ExperimentExecutor:
                         if idx + 1 < len(config.args):
                             cfg_name = config.args[idx + 1]
                             cfg_path = Path(working_dir) / cfg_name
+
                             if not cfg_path.exists():
                                 # Try common alternatives in this codebase
                                 alternatives = ['config_local_all.yaml', 'config_local.yaml', 'config.yaml']
+
                                 for alt in alternatives:
                                     alt_path = Path(working_dir) / alt
+
                                     if alt_path.exists():
                                         self.logger.info(f"[run_experiment] Substituting missing config '{cfg_name}' with '{alt}'")
                                         config.args[idx + 1] = alt
@@ -667,6 +732,7 @@ class ExperimentExecutor:
                 # Run with pytest and capture output (use -v for verbose test names)
                 pytest_cmd = [python_cmd, '-m', 'pytest', str(script_path), '--maxfail=100', '--disable-warnings', '-v', '--tb=short']
                 self.logger.info(f"[run_experiment] Running pytest: {' '.join(pytest_cmd)}")
+
                 proc = subprocess.Popen(
                     pytest_cmd,
                     cwd=str(working_dir),
@@ -676,10 +742,12 @@ class ExperimentExecutor:
                     text=True,
                     bufsize=1
                 )
+
             elif is_shell_script:
                 venv_python = python_cmd if python_cmd else 'python3'
                 cmd = ['bash', str(script_path)] + config.args
                 self.logger.info(f"[run_experiment] Running shell script: {' '.join(cmd)}")
+
                 try:
                     proc = subprocess.Popen(
                         cmd,
@@ -691,12 +759,14 @@ class ExperimentExecutor:
                         bufsize=1
                     )
                     self.logger.info(f"[run_experiment] Shell script process started successfully.")
+
                 except Exception as e:
                     self.logger.error(f"[run_experiment] Failed to start shell script: {e}")
                     raise
             else:
                 cmd = [python_cmd, str(script_path)] + config.args
                 self.logger.info(f"[run_experiment] Running subprocess: {' '.join(cmd)}")
+
                 proc = subprocess.Popen(
                     cmd,
                     cwd=str(working_dir),
@@ -712,25 +782,33 @@ class ExperimentExecutor:
             log_interval = 300  # 5 minutes
             stdout_lines = []
             stderr_lines = []
+
             def stream_output(pipe, lines, is_stderr=False):
                 for line in iter(pipe.readline, ''):
                     lines.append(line)
+
                     if is_stderr:
                         self.logger.info(f"[STDERR] {line.rstrip()}")
+
                     else:
                         self.logger.info(f"[STDOUT] {line.rstrip()}")
                 pipe.close()
+
             stdout_thread = threading.Thread(target=stream_output, args=(proc.stdout, stdout_lines, False))
             stderr_thread = threading.Thread(target=stream_output, args=(proc.stderr, stderr_lines, True))
             stdout_thread.start()
             stderr_thread.start()
+
             while proc.poll() is None:
                 now = time.time()
+
                 if now - last_log_time >= log_interval:
                     elapsed = int((now - start_time) // 60)
                     self.logger.info(f"[run_experiment] Experiment still running after {elapsed} minutes...")
                     last_log_time = now
+
                 time.sleep(poll_interval)
+
             stdout_thread.join()
             stderr_thread.join()
             stdout = ''.join(stdout_lines)
@@ -739,7 +817,6 @@ class ExperimentExecutor:
             end_time_str = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
             self.logger.info(f"[run_experiment] End time: {end_time_str}")
             self.logger.info(f"[run_experiment] Duration: {duration:.2f} seconds")
-
 
             # Always collect outputs from files
             outputs = self._collect_outputs(working_dir)
@@ -750,6 +827,7 @@ class ExperimentExecutor:
             # Apply YAML config extractors if provided
             if config.metrics_config and config.metrics_config.get('extractors'):
                 logger.info(f"[run_experiment] Applying {len(config.metrics_config['extractors'])} config extractors to stdout")
+
                 for extractor in config.metrics_config['extractors']:
                     pattern = extractor.get('pattern')
                     name = extractor.get('name')
@@ -761,6 +839,7 @@ class ExperimentExecutor:
                     # Search through all stdout lines
                     for line in stdout_lines + stderr_lines:
                         match = re.search(pattern, line, re.IGNORECASE)
+
                         if match:
                             try:
                                 value = match.group(1)
@@ -768,14 +847,18 @@ class ExperimentExecutor:
                                 # Apply transformations
                                 if transform == 'percent_to_decimal':
                                     value = float(value) / 100.0
+
                                 elif '.' in value or 'e' in value.lower():
                                     value = float(value)
+
                                 else:
                                     value = int(value)
                                 
                                 metrics[name] = value
                                 logger.info(f"[run_experiment] Extracted {name} = {value} via config extractor")
+
                                 break  # Take first match
+
                             except Exception as e:
                                 logger.warning(f"[run_experiment] Failed to extract {name}: {e}")
             
@@ -784,32 +867,41 @@ class ExperimentExecutor:
                 # Pattern for "Metric: value" or "Metric = value" format
                 r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)[\s:=]+([0-9\.eE+-]+)",
                 r"(accuracy|f1|f1[-_ ]score|precision|recall|bleu|rouge|auc|mrr|specificity|sensitivity|mae|mse|rmse|r2|loss|score)\s*=\s*([0-9\.eE+-]+)",
+
                 # Pattern for sklearn-style output: "Accuracy: 0.9298" with capital first letter
                 r"(Accuracy|Precision|Recall|F1\s+Score):\s+([0-9\.eE+-]+)",
+
                 # Pattern for model-prefixed metrics: "KNN Accuracy: 0.9667" or "SVM Precision (macro): 0.9524"
                 r"(KNN|SVM|RF|LR)\s+(Accuracy|Precision|Recall|F1\s+Score)(?:\s+\(macro\))?:\s+([0-9\.eE+-]+)",
             ]
+
             model_names = {'KNN', 'SVM', 'RF', 'LR'}
+
             for line in stdout_lines + stderr_lines:
                 for pat in metric_patterns:
                     m = re.search(pat, line, re.IGNORECASE)
+
                     if m:
                         # Handle model-prefixed metrics (3 groups)
                         if len(m.groups()) == 3 and m.group(1).upper() in model_names:
                             model = m.group(1).lower()
                             metric = m.group(2).lower().translate(str.maketrans(' -', '__'))
                             key = f"{model}_{metric}"
+
                             try:
                                 val = float(m.group(3))
                                 metrics[key] = val
                             except Exception:
                                 continue
+
                         else:
                             # Standard metric (2 groups)
                             key = m.group(1).lower().translate(str.maketrans(' -', '__'))
+
                             try:
                                 val = float(m.group(2))
                                 metrics[key] = val
+
                             except Exception:
                                 continue
 
@@ -818,8 +910,10 @@ class ExperimentExecutor:
             for out in outputs.values():
                 if isinstance(out, dict):
                     for k, v in out.items():
+
                         if isinstance(v, (int, float)) and k not in metrics_set:
                             metrics[k] = v
+
                         elif isinstance(v, dict):
                             for kk, vv in v.items():
                                 if isinstance(vv, (int, float)) and kk not in metrics_set:
@@ -829,19 +923,25 @@ class ExperimentExecutor:
             if is_test_script:
                 passed = failed = errors = skipped = 0
                 test_details = []
+
                 for line in stdout_lines + stderr_lines:
                     m = re.search(r'(\d+)\s+passed', line)
+
                     if m:
                         passed += int(m.group(1))
                     m = re.search(r'(\d+)\s+failed', line)
+
                     if m:
                         failed += int(m.group(1))
                     m = re.search(r'(\d+)\s+error', line)
+
                     if m:
                         errors += int(m.group(1))
                     m = re.search(r'(\d+)\s+skipped', line)
+
                     if m:
                         skipped += int(m.group(1))
+
                     # Extract test names and outcomes
                     # Pattern for verbose pytest: "test_file.py::TestClass::test_name PASSED"
                     test_match = re.search(r'::(test_\w+)\s+(PASSED|FAILED|SKIPPED|ERROR)', line)
@@ -856,6 +956,7 @@ class ExperimentExecutor:
                 metrics['tests_skipped'] = skipped
                 metrics['success'] = (failed == 0 and errors == 0)
                 metrics['duration'] = duration
+
                 if test_details:
                     metrics['test_details'] = test_details
                     outputs['test_details'] = test_details
@@ -865,11 +966,13 @@ class ExperimentExecutor:
             try:
                 results_path = working_dir / 'complete_results.json'
                 existing_metrics = {}
+
                 if results_path.exists():
                     try:
                         with open(str(results_path), 'r') as f:
                             existing_metrics = json.load(f)
                         self.logger.info(f"[run_experiment] Merging with existing complete_results.json ({len(existing_metrics)} existing metrics)")
+                    
                     except Exception as e:
                         self.logger.warning(f"[run_experiment] Could not read existing complete_results.json: {e}")
                 
@@ -890,12 +993,16 @@ class ExperimentExecutor:
                 if is_test_run:
                     # Update test-related fields and performance metrics, preserve all other metrics
                     preserved_count = 0
+
                     for key, value in metrics.items():
                         if key in test_fields or key in performance_fields:
                             merged_metrics[key] = value
+
                         else:
                             preserved_count += 1
+
                     preserved_metric_count = sum(1 for k in existing_metrics if k not in test_fields and k not in performance_fields)
+
                     self.logger.info(f"[run_experiment] Updated test results, preserved {preserved_metric_count} experiment metrics")
                 else:
                     # Regular experiment run - merge all metrics (new takes precedence)
@@ -903,8 +1010,10 @@ class ExperimentExecutor:
                 
                 with open(str(results_path), 'w') as f:
                     json.dump(merged_metrics, f, indent=2)
+
                 outputs['complete_results.json'] = merged_metrics
                 self.logger.info(f"[run_experiment] Wrote complete_results.json with {len(merged_metrics)} total fields")
+
             except Exception as e:
                 self.logger.error(f"[run_experiment] Failed to write complete_results.json: {e}")
 
@@ -915,6 +1024,7 @@ class ExperimentExecutor:
                 # Auto-retry if dataset error detected
                 if 'Dataset not found or corrupted' in stderr and 'download=False' in stderr:
                     self.logger.warning("[run_experiment] Detected missing dataset error. Retrying with download=True...")
+
                     # Try to patch args if possible
                     # If script supports --download, add it
                     if '--download' not in config.args:
@@ -929,25 +1039,34 @@ class ExperimentExecutor:
                             stderr=subprocess.PIPE,
                             text=True
                         )
+
                         last_log_time2 = time.time()
+
                         while True:
                             retcode2 = proc2.poll()
                             now2 = time.time()
+
                             if retcode2 is not None:
                                 break
+
                             if now2 - last_log_time2 >= log_interval:
                                 elapsed2 = int((now2 - start_time) // 60)
                                 self.logger.info(f"[run_experiment] Experiment retry still running after {elapsed2} minutes...")
                                 last_log_time2 = now2
+
                             time.sleep(poll_interval)
+
                         stdout2, stderr2 = proc2.communicate()
                         duration2 = time.time() - start_time
                         self.logger.info(f"[run_experiment] Retry duration: {duration2:.2f} seconds")
                         outputs2 = self._collect_outputs(working_dir)
+
                         if proc2.returncode != 0:
                             self.logger.error(f"Experiment retry failed.\nSTDOUT:\n{stdout2}\nSTDERR:\n{stderr2}")
+
                         else:
                             self.logger.info(f"[run_experiment] Experiment retry completed successfully.\nSTDOUT:\n{stdout2}")
+                            
                         return ExperimentResult(
                             success=(proc2.returncode == 0),
                             stdout=stdout2,
@@ -971,7 +1090,7 @@ class ExperimentExecutor:
         except subprocess.TimeoutExpired:
             duration = time.time() - start_time
             self.logger.error(f"Experiment timed out after {config.timeout} seconds")
-            
+
             return ExperimentResult(
                 success=False,
                 stdout="",

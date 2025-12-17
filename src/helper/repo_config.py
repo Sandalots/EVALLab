@@ -219,27 +219,33 @@ def llm_generate_repo_config(
                 # Read first 500 chars to see if it mentions outputs
                 try:
                     content = md_file.read_text(encoding='utf-8', errors='ignore')[:500]
+
                     if any(keyword in content.lower() for keyword in ['output', 'result', 'report', 'metrics']):
                         rel_path = md_file.relative_to(codebase_path)
                         markdown_docs.append({
                             'path': str(rel_path),
                             'snippet': content[:300]
                         })
+
                         if len(markdown_docs) >= 3:
                             break
+
                 except Exception:
                     pass
         
         output_files_info = "\n".join(f"  - {f}" for f in output_files) if output_files else "None found"
         markdown_info = ""
+
         if markdown_docs:
             markdown_info = "\n\nMarkdown files mentioning outputs:\n"
+
             for doc in markdown_docs:
                 markdown_info += f"\n{doc['path']}:\n{doc['snippet']}...\n"
         
         # Build LLM prompt
         readme_info = f"\nREADME Content:\n```\n{readme_content}\n```\n" if readme_content else ""
         readme_cmds_info = ""
+
         if readme_commands:
             readme_cmds_info = f"\nParsed README Commands:\n{json.dumps(readme_commands, indent=2)}\n"
         
@@ -323,6 +329,7 @@ Return ONLY the JSON configuration:"""
             # Try direct parse
             try:
                 return json.loads(text)
+            
             except json.JSONDecodeError:
                 pass
             
@@ -337,11 +344,13 @@ Return ONLY the JSON configuration:"""
                 if match:
                     try:
                         return json.loads(match.group(1) if '```' in pattern else match.group(0))
+                    
                     except json.JSONDecodeError:
                         continue
             return None
         
         config_data = extract_json(response)
+
         if not config_data or not isinstance(config_data, dict):
             log.warning("Failed to parse LLM response as JSON")
             return None
@@ -425,20 +434,24 @@ def generate_repo_config_from_filesystem(codebase_path: Path) -> RepoConfig:
 
     # Determine prefix if codebase_path is a 'code' directory
     prefix = ""
+
     if codebase_path.name == "code":
         prefix = "code/"
 
     # Find entry script
     entry_candidates = ["main_local_all_new.py", "main.py", "run.py", "experiment.py"]
     entry_point = None
+
     for name in entry_candidates:
         candidate = codebase_path / name
+
         if candidate.exists():
             entry_point = f"{prefix}{name}"
             break
 
     # Detect outputs dirs
     outputs_dirs = [d for d in codebase_path.iterdir() if d.is_dir() and (d / "complete_results.json").exists()]
+
     # Choose primary methods dir
     methods_dir = (
         next((d for d in outputs_dirs if d.name == "outputs_all_methods"), None)
@@ -447,15 +460,18 @@ def generate_repo_config_from_filesystem(codebase_path: Path) -> RepoConfig:
 
     results_file = None
     report_file = None
+
     if methods_dir:
         if (methods_dir / "complete_results.json").exists():
             results_file = f"{prefix}{methods_dir.name}/complete_results.json"
+
         if (methods_dir / "report.md").exists():
             report_file = f"{prefix}{methods_dir.name}/report.md"
 
     outputs = {}
     if results_file:
         outputs["results_file"] = results_file
+
     if report_file:
         outputs["report_file"] = report_file
 
@@ -513,8 +529,10 @@ def execute_pre_run_setup(config: RepoConfig, repo_path: Path, logger: logging.L
     # Install dependencies
     if config.dependencies:
         venv_python = repo_path / "venv" / "bin" / "python"
+
         if venv_python.exists():
             logger.info(f"  Installing dependencies: {', '.join(config.dependencies)}")
+
             for dep in config.dependencies:
                 try:
                     subprocess.run(
@@ -524,6 +542,7 @@ def execute_pre_run_setup(config: RepoConfig, repo_path: Path, logger: logging.L
                         text=True,
                         timeout=300
                     )
+                    
                 except Exception as e:
                     logger.warning(f"  ⚠ Failed to install {dep}: {e}")
     
@@ -533,7 +552,7 @@ def execute_pre_run_setup(config: RepoConfig, repo_path: Path, logger: logging.L
         
         if action_type == 'patch_file':
             file_path = repo_path / action['file']
-            
+
             if file_path.exists():
                 try:
                     content = file_path.read_text()
