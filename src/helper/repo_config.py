@@ -185,6 +185,7 @@ def llm_generate_repo_config(
                         continue
 
                     prefix = "  " * current_depth
+                    
                     if item.is_dir():
                         lines.append(f"{prefix}{item.name}/")
                         lines.append(get_tree(item, max_depth, current_depth + 1))

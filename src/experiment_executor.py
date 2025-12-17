@@ -108,6 +108,7 @@ class ExperimentExecutor:
     def _collect_outputs(self, working_dir: Path) -> dict:
         """Collect output files from experiment execution."""
         outputs = {}
+
         # Look for common output patterns
         output_patterns = ('output*.json', 'results*.json', '*.json')
 
@@ -142,6 +143,7 @@ class ExperimentExecutor:
             file_handler = logging.FileHandler(log_filename)
             file_handler.setFormatter(logging.Formatter(
                 '{asctime} {levelname}: {message}', style='{'))
+            
             self.logger.addHandler(file_handler)
 
     # ============================================================================
@@ -226,9 +228,11 @@ class ExperimentExecutor:
 
         # Recursively search for entry points, excluding unwanted dirs
         exclude_dirs = {'venv', 'env', 'site-packages', '__pycache__'}
+
         for pattern in entry_patterns:
             entry_points.extend([
                 match for match in path.rglob(pattern)
+
                 if match.is_file() and match not in entry_points
                 and not any(part.startswith('.') or part in exclude_dirs for part in match.parts)
             ])
@@ -258,10 +262,12 @@ class ExperimentExecutor:
 
         if entry_points:
             main_script = entry_points[0]
+
             try:
                 code = Path(main_script).read_text(encoding='utf-8')
                 import_lines = [line for line in code.splitlines() if line.strip(
                 ).startswith(('import', 'from'))]
+
                 import_text = ' '.join(import_lines)
                 dependencies_set = set(dependencies)
 
@@ -409,6 +415,7 @@ class ExperimentExecutor:
             try:
                 line_count = sum(1 for _ in open(
                     filepath, 'r', encoding='utf-8'))
+                
                 file_size = filepath.stat().st_size
 
                 results['file_stats'][filename] = {
@@ -521,11 +528,13 @@ class ExperimentExecutor:
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to create virtual environment: {e}")
                 return False
+            
         # Environment setup complete
 
         # Install dependencies if not already installed
         if dependencies and not venv_ready:
             python_executable, _, _ = _get_venv_paths(venv_path)
+
             logger.info(f"Installing {len(dependencies)} dependencies...")
             logger.info("⏳ This may take a few minutes depending on package sizes...")
             logger.info(f"   (Timeout: 30 minutes)")
@@ -641,6 +650,7 @@ class ExperimentExecutor:
 
         workspace_root = Path(__file__).parent.parent
         workspace_venv_python = workspace_root / '.venv' / 'bin' / 'python'
+
         python_cmd = None
 
         # If running in papers/codebases (formerly cloned_repos), prefer venvs in repo root and working dir
@@ -695,6 +705,7 @@ class ExperimentExecutor:
 
         # Prepare environment variables
         env = {**os.environ, **config.env_vars}
+
         # Force single-threaded execution in subprocesses
         env["OMP_NUM_THREADS"] = "1"
         env["MKL_NUM_THREADS"] = "1"
@@ -763,6 +774,7 @@ class ExperimentExecutor:
                 except Exception as e:
                     self.logger.error(f"[run_experiment] Failed to start shell script: {e}")
                     raise
+
             else:
                 cmd = [python_cmd, str(script_path)] + config.args
                 self.logger.info(f"[run_experiment] Running subprocess: {' '.join(cmd)}")
@@ -778,8 +790,10 @@ class ExperimentExecutor:
                 )
 
             last_log_time = start_time
+
             poll_interval = 10  # seconds
             log_interval = 300  # 5 minutes
+
             stdout_lines = []
             stderr_lines = []
 
@@ -792,10 +806,12 @@ class ExperimentExecutor:
 
                     else:
                         self.logger.info(f"[STDOUT] {line.rstrip()}")
+
                 pipe.close()
 
             stdout_thread = threading.Thread(target=stream_output, args=(proc.stdout, stdout_lines, False))
             stderr_thread = threading.Thread(target=stream_output, args=(proc.stderr, stderr_lines, True))
+
             stdout_thread.start()
             stderr_thread.start()
 
@@ -811,10 +827,14 @@ class ExperimentExecutor:
 
             stdout_thread.join()
             stderr_thread.join()
+
             stdout = ''.join(stdout_lines)
             stderr = ''.join(stderr_lines)
+
             duration = time.time() - start_time
+
             end_time_str = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
+
             self.logger.info(f"[run_experiment] End time: {end_time_str}")
             self.logger.info(f"[run_experiment] Duration: {duration:.2f} seconds")
 
@@ -891,6 +911,7 @@ class ExperimentExecutor:
                             try:
                                 val = float(m.group(3))
                                 metrics[key] = val
+
                             except Exception:
                                 continue
 
@@ -907,6 +928,7 @@ class ExperimentExecutor:
 
             # Merge metrics from output files if present
             metrics_set = set(metrics)
+
             for out in outputs.values():
                 if isinstance(out, dict):
                     for k, v in out.items():
@@ -922,6 +944,7 @@ class ExperimentExecutor:
             # If this was a pytest run, also parse test results
             if is_test_script:
                 passed = failed = errors = skipped = 0
+
                 test_details = []
 
                 for line in stdout_lines + stderr_lines:
@@ -945,6 +968,7 @@ class ExperimentExecutor:
                     # Extract test names and outcomes
                     # Pattern for verbose pytest: "test_file.py::TestClass::test_name PASSED"
                     test_match = re.search(r'::(test_\w+)\s+(PASSED|FAILED|SKIPPED|ERROR)', line)
+
                     if test_match:
                         test_details.append({
                             'test_name': test_match.group(1),
@@ -971,6 +995,7 @@ class ExperimentExecutor:
                     try:
                         with open(str(results_path), 'r') as f:
                             existing_metrics = json.load(f)
+                            
                         self.logger.info(f"[run_experiment] Merging with existing complete_results.json ({len(existing_metrics)} existing metrics)")
                     
                     except Exception as e:
@@ -1031,6 +1056,7 @@ class ExperimentExecutor:
                         patched_args = config.args + ['--download']
                         cmd2 = [python_cmd, str(script_path)] + patched_args
                         self.logger.info(f"[run_experiment] Retrying subprocess: {' '.join(cmd2)}")
+
                         proc2 = subprocess.Popen(
                             cmd2,
                             cwd=str(working_dir),
@@ -1098,6 +1124,7 @@ class ExperimentExecutor:
                 return_code=-1,
                 duration=duration
             )
+        
         except Exception as e:
             duration = time.time() - start_time
             tb = traceback.format_exc()

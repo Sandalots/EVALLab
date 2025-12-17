@@ -69,6 +69,7 @@ class PaperParser:
 
     def _extract_github_urls(self, text: str) -> List[str]:
         """Extract GitHub repository URLs from text, cleaning trailing reference symbols/punctuation and .N artifacts."""
+        
         # First, find URLs with the pattern that allows spaces/newlines within the URL structure
         urls = self.github_pattern.findall(text)
         

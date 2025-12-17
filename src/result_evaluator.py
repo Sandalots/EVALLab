@@ -52,12 +52,14 @@ class ResultEvaluator:
     def _extract_metrics_from_nested_dict(self, data: dict, prefix: str = "") -> Dict[str, float]:
         """Recursively extract numeric metrics from nested dictionaries, and also include all top-level numeric keys (for flat summary metrics)."""
         metrics = {}
+
         for key, value in data.items():
             current_key = f"{prefix}/{key}" if prefix else key
 
             if isinstance(value, dict):
                 if 'metrics' in value:
                     metric_dict = value['metrics']
+
                     for metric_name, metric_value in metric_dict.items():
 
                         if isinstance(metric_value, dict):
@@ -552,6 +554,7 @@ JSON:"""
                 if isinstance(value, (int, float)):
                     # Normalize metric names
                     clean_key = key.lower().translate(str.maketrans(' -', '__'))
+
                     cleaned_metrics[clean_key] = float(value)
 
             if not cleaned_metrics:
@@ -563,6 +566,7 @@ JSON:"""
             )
         except Exception as e:
             logger.error(f"Failed to extract baseline metrics: {e}")
+
             return BaselineMetrics(metrics={}, source="Extraction failed")
 
     def _extract_baseline_from_complete_results(self, codebase_path: Path) -> Dict[str, float]:
@@ -585,7 +589,9 @@ JSON:"""
             try:
                 with open(root_results_path, 'r') as f:
                     results = json.load(f)
+
                 extracted = self._extract_metrics_from_nested_dict(results, prefix="root")
+
                 metrics.update(extracted)
                 logger.info(f"✓ Extracted {len(extracted)} baseline metrics from root/complete_results.json")
 
@@ -605,7 +611,9 @@ JSON:"""
                 try:
                     with open(results_path, 'r') as f:
                         results = json.load(f)
+
                     extracted = self._extract_metrics_from_nested_dict(results, prefix=dir_name)
+
                     metrics.update(extracted)
                     logger.info(f"✓ Extracted {len(extracted)} baseline metrics from {dir_name}/complete_results.json")
 
@@ -698,10 +706,12 @@ JSON:"""
             # Detect task type sections and handle retrieval/downstream
             if current_config and '**Retrieval Performance:**' in line:
                 current_task_type = 'retrieval'
+
                 continue
 
             elif current_config and '**Downstream Tasks:**' in line:
                 current_task_type = 'downstream'
+
                 continue
 
             if current_config and current_task_type:
@@ -818,6 +828,7 @@ JSON:"""
         # Debug logging (only if enabled)
         if logger.isEnabledFor(logging.DEBUG) and len(norm_baseline) < 20:
             from itertools import islice
+
             logger.debug(f"Baseline keys sample: {list(islice(norm_baseline.keys(), 10))}")
             logger.debug(f"Reproduced keys sample: {list(islice(norm_reproduced.keys(), 10))}")
 
@@ -896,6 +907,7 @@ JSON:"""
         by_experiment = {}
         for comp in comparisons:
             parts = comp.configuration.split('/')
+
             exp_set = parts[0] if parts else "unknown"
 
             if exp_set not in by_experiment:
@@ -956,6 +968,7 @@ JSON:"""
                 continue
 
             config = '/'.join(comp.configuration.split('/')[1:4])
+
             best_configs[config].append(abs(pct))
 
         # Average percent difference per config
@@ -997,6 +1010,7 @@ JSON:"""
             
             except (TypeError, ValueError):
                 return float('inf')
+            
         sample = sorted(comparisons, key=_safe_abs_pct)[:sample_size]
 
         # Build comparison summary for LLM
@@ -1317,6 +1331,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         worst_metrics = nlargest(5, comparisons, key=_safe_abs_pct_worst)
 
         lines.append("\nTop Issues Identified:")
+
         for i, comp in enumerate(worst_metrics, 1):
             config_short = '/'.join(comp.configuration.split('/')[1:4])
 
@@ -1646,6 +1661,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         # Handle empty DataFrame or missing column gracefully
         if df.empty or 'within_threshold' not in df.columns:
             logger.warning("No metric comparisons available or 'within_threshold' column missing. Skipping visualizations.")
+
             return generated_files
 
         # 1. Overall Performance Comparison Bar Chart
@@ -1676,6 +1692,7 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         plt.tight_layout()
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
+
         plt.close()
 
         generated_files['overall_performance'] = file_path
@@ -1713,13 +1730,16 @@ Provide a concise analysis (3-4 paragraphs)."""
                     f'{val:.1f}%', va='center', fontsize=9)
 
         file_path = output_dir / 'performance_by_configuration.png'
+
         plt.tight_layout()
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
+
         generated_files['performance_by_configuration'] = file_path
 
         # 3. Scatter Plot: Baseline vs Reproduced Values (numeric only)
         df_scatter = df_matched[df_matched[['baseline_value_num', 'reproduced_value_num']].notna().all(axis=1)].copy()
+
         if not df_scatter.empty:
             fig, ax = plt.subplots(figsize=(13, 13))
 
@@ -1750,6 +1770,7 @@ Provide a concise analysis (3-4 paragraphs)."""
             plt.savefig(file_path, dpi=300, bbox_inches="tight")
             plt.close()
             generated_files['baseline_vs_reproduced'] = file_path
+
         else:
             logger.warning('No numeric baseline/reproduced values available for scatter plot. Skipping.')
 
@@ -1762,6 +1783,7 @@ Provide a concise analysis (3-4 paragraphs)."""
             percent_diff_capped = df_hist['percent_difference_num'].clip(-50, 50)
 
             ax.hist(percent_diff_capped, bins=50, color='#3498db', alpha=0.7, edgecolor='black')
+
             ax.axvline(x=0, color='green', linestyle='--', linewidth=2, label='Perfect match')
             ax.axvline(x=-5, color='orange', linestyle='--', alpha=0.7, label='±5% threshold')
             ax.axvline(x=5, color='orange', linestyle='--', alpha=0.7)
@@ -1772,9 +1794,11 @@ Provide a concise analysis (3-4 paragraphs)."""
             ax.legend()
 
             file_path = output_dir / 'deviation_distribution.png'
+
             plt.tight_layout()
             plt.savefig(file_path, dpi=300, bbox_inches="tight")
             plt.close()
+
             generated_files['deviation_distribution'] = file_path
 
         else:
@@ -1822,6 +1846,7 @@ Provide a concise analysis (3-4 paragraphs)."""
                 'Median Absolute Deviation',
                 'Std Dev of Deviations'
             ],
+
             'Value': [
                 f"{len(df_matched)}",
                 f"{df_matched['within_threshold'].sum()}",
@@ -1855,11 +1880,13 @@ Provide a concise analysis (3-4 paragraphs)."""
         # Alternate row colors
         for i in range(1, len(summary_data['Metric']) + 1):
             for j in range(2):
+
                 if i % 2 == 0:
                     table[(i, j)].set_facecolor('#ecf0f1')
 
         plt.title('Summary Statistics', fontsize=14, fontweight='bold', pad=20)
         file_path = output_dir / 'summary_statistics.png'
+        
         plt.tight_layout()
         plt.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close()
@@ -1881,12 +1908,14 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         # Add per_example_diffs.html if it exists
         per_example_diffs_path = output_dir / 'per_example_diffs.html'
+
         if per_example_diffs_path.exists():
             generated_files['per_example_diffs'] = per_example_diffs_path
 
         # Generate index HTML
         html_content = self._generate_visualization_index(
             generated_files, df, paper_name)
+        
         html_path = output_dir / 'visualizations.html'
 
         with open(html_path, 'w', encoding='utf-8') as f:

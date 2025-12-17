@@ -28,6 +28,7 @@ def setup_logging(output_dir):
 
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
+
     root_logger.setLevel(logging.INFO)
 
     # File handler (plain)
@@ -74,6 +75,7 @@ def main():
     # Show command-line usage if arguments provided
     if args.paper or args.code:
         print("\n\033[1;93m📋 Command-Line Mode:\033[0m")
+
         if args.paper:
             print(f"  Paper: {args.paper}")
 
@@ -410,6 +412,6 @@ def main():
         
         return 1
 
-
+# run the main method if called directly by name
 if __name__ == '__main__':
     sys.exit(main())

@@ -102,16 +102,13 @@ class RepoRetriever:
                     return cloned_path
                 
                 # Clone failed - prompt user for manual clone
-                logger.error(
-                    f"❌ Failed to clone user-provided repository: {normalized_url}")
+                logger.error(f"❌ Failed to clone user-provided repository: {normalized_url}")
                 logger.error(f"")
                 logger.error(f"🛠️  MANUAL CLONE REQUIRED:")
                 logger.error(f"   Please run this command manually:")
-                logger.error(
-                    f"   git clone {normalized_url} {self.workspace_root}/papers/codebases/{normalized_url.split('/')[-1].replace('.git', '')}")
+                logger.error(f"   git clone {normalized_url} {self.workspace_root}/papers/codebases/{normalized_url.split('/')[-1].replace('.git', '')}")
                 logger.error(f"")
-                logger.error(
-                    f"   Then re-run EVALLab with: --code {self.workspace_root}/papers/codebases/{normalized_url.split('/')[-1].replace('.git', '')}")
+                logger.error(f"   Then re-run EVALLab with: --code {self.workspace_root}/papers/codebases/{normalized_url.split('/')[-1].replace('.git', '')}")
                 
                 return None
             
@@ -180,7 +177,7 @@ class RepoRetriever:
                 if cloned_path:
                     logger.info(f"✓ Using paper-specific GitHub repository")
 
-                    return cloned_path        # Priority 3: Check papers/codebases directory (fallback)
+                    return cloned_path 
                 
         # Try LLM-based semantic matching if available
         if self.llm_client and self.paper_path:
@@ -206,6 +203,7 @@ class RepoRetriever:
 
         if not self.llm_client:
             logger.error("  ℹ️  LLM semantic matching unavailable (no llm_client)")
+
         logger.error(
             "🛑 Please specify a codebase using the --code argument or ensure the paper contains a valid GitHub repository link.")
         
@@ -230,6 +228,7 @@ class RepoRetriever:
         # First try LLM-based directory discovery if available
         if self.llm_client:
             for subdir in self.paper_source_dir.iterdir():
+
                 if subdir.is_dir():
                     llm_code_dir = self._llm_find_code_directory(subdir)
 
@@ -328,6 +327,7 @@ class RepoRetriever:
         try:
             # Extract repo name from URL
             repo_name = github_url.rstrip('/').split('/')[-1]
+
             if repo_name.endswith('.git'):
                 repo_name = repo_name[:-4]
 
@@ -336,8 +336,7 @@ class RepoRetriever:
             # Skip if already cloned and looks valid
             if clone_dir.exists() and self._looks_like_code_dir(clone_dir):
                 logger.info(f"✓ Repository already exists: {clone_dir}")
-                logger.info(
-                    f"   Skipping clone (delete directory to re-clone)")
+                logger.info( f"   Skipping clone (delete directory to re-clone)")
                 
                 return clone_dir
             
@@ -367,6 +366,7 @@ class RepoRetriever:
             
             else:
                 error_msg = result.stderr.strip()
+
                 logger.error(f"Git clone failed with error:")
                 logger.error(f"  {error_msg}")
 
@@ -444,6 +444,7 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
                 if matched_path.exists():
                     logger.info(f"LLM matched codebase: {best_match} (confidence: {confidence:.2f})")
                     logger.debug(f"Reasoning: {result.get('reasoning', 'N/A')}")
+
                     return matched_path
                 
             else:
@@ -497,6 +498,7 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
         
         # List Python files to help LLM decide
         python_files = []
+        
         for py_file in base_path.rglob("*.py"):
             rel_path = py_file.relative_to(base_path)
 

@@ -134,6 +134,7 @@ class ColoredFormatter(logging.Formatter):
 # Only set up a colored console handler here; file handler is set up per-paper in run_EVALLab.py
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(ColoredFormatter(datefmt='%Y-%m-%d %H:%M:%S'))
+
 logging.basicConfig(
     level=logging.INFO,
     handlers=[console_handler]
@@ -192,6 +193,7 @@ class ReproductionAgent:
 
         # Extract paper name for per-paper logging
         paper_name = None
+
         if hasattr(self, 'paper_path') and self.paper_path:
             paper_name = Path(self.paper_path).stem
 
@@ -259,6 +261,7 @@ class ReproductionAgent:
         try:
             response = requests.get(
                 f"{self.ollama_base_url}/api/tags", timeout=5)
+            
             response.raise_for_status()
             data = response.json()
 
@@ -380,6 +383,7 @@ class ReproductionAgent:
         # Try to extract JSON from markdown code blocks first
         json_match = re.search(
             r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
+        
         if json_match:
             response = json_match.group(1)
 
@@ -505,8 +509,7 @@ class ReproductionAgent:
         # Step 1: Check Ollama availability
         if not self.is_available():
             logger.error("Ollama is not running or not accessible!")
-            logger.error(
-                f"Please start Ollama and ensure it's running at {self.ollama_base_url}")
+            logger.error(f"Please start Ollama and ensure it's running at {self.ollama_base_url}")
             
             return {'error': 'Ollama not available'}
 
@@ -526,6 +529,7 @@ class ReproductionAgent:
         print("="*80 + "\n")
 
         paper_content = self.paper_parser.parse_pdf(paper_path)
+
         logger.info(
             f"✓ Extracted {len(paper_content.raw_text)} characters from paper")
 
@@ -622,10 +626,12 @@ class ReproductionAgent:
 
             if local_path:
                 print("\033[91m│\033[0m" + f"   ✗ User path: {local_path}".ljust(78) + "\033[91m│\033[0m")
+
             print("\033[91m│\033[0m" + "   ✗ Local directory: ./papers/codebases/".ljust(78) + "\033[91m│\033[0m")
 
             if paper_content.github_urls:
                 print("\033[91m│\033[0m" + f"   ✗ GitHub URLs: {len(paper_content.github_urls)} found but failed to clone".ljust(78) + "\033[91m│\033[0m")
+
             else:
                 print("\033[91m│\033[0m" + "   ✗ GitHub URLs: None found in paper".ljust(78) + "\033[91m│\033[0m")
 
@@ -648,8 +654,8 @@ class ReproductionAgent:
         print("\033[95m└" + "─"*78 + "┘\033[0m")
         print("="*80 + "\n")
 
-        codebase_info = self.experiment_executor.analyze_codebase(
-            codebase_path)
+        codebase_info = self.experiment_executor.analyze_codebase(codebase_path)
+
         logger.info(f"✓ Analyzed codebase (language: {codebase_info.language})")
         logger.info(f"✓ Found {len(codebase_info.entry_points)} potential entry points")
         logger.info(f"✓ Found {len(codebase_info.dependencies)} dependencies")
@@ -674,8 +680,8 @@ class ReproductionAgent:
             if validation_results['file_stats']:
                 total_size = sum(s.get('size_mb', 0)
                                  for s in validation_results['file_stats'].values())
-                logger.info(
-                    f"✓ Data validation complete - {len(validation_results['file_stats'])} files, {total_size:.1f}MB total")
+                
+                logger.info(f"✓ Data validation complete - {len(validation_results['file_stats'])} files, {total_size:.1f}MB total")
         else:
             logger.debug("No data validation configured for this repository")
 
@@ -728,6 +734,7 @@ class ReproductionAgent:
         # Extract all metrics from all experiments
         all_reproduced_metrics = self.result_evaluator.extract_all_metrics_from_experiments(
             experiment_sets)
+        
         logger.info(
             f"✓ Extracted {len(all_reproduced_metrics)} total metrics from all experiments")
 
@@ -737,12 +744,14 @@ class ReproductionAgent:
             codebase_path=codebase_info.path,
             repo_config=repo_config
         )
+
         logger.info(f"✓ Extracted {len(baseline.metrics)} baseline metrics")
         logger.info(f"  Source: {baseline.source}")
 
         # Compare all reproduced metrics to baseline
         comparisons = self.result_evaluator.compare_results(
             baseline, all_reproduced_metrics)
+        
         logger.info(f"✓ Generated {len(comparisons)} metric comparisons")
 
         # Generate comprehensive report
@@ -768,6 +777,7 @@ class ReproductionAgent:
 
         # Get LLM analysis of differences
         analysis = ""
+
         if comparisons:
             print("\n" + "="*80)
             print("\033[94m┌" + "─"*78 + "┐\033[0m")
@@ -811,6 +821,7 @@ class ReproductionAgent:
             baseline,
             paper_content.methodology + "\n" + paper_content.experiments
         )
+
         logger.info(conclusions)
 
         # Generate visualizations
@@ -840,13 +851,14 @@ class ReproductionAgent:
                 per_example_total=per_example_total,
                 per_example_matches=per_example_matches
             )
+
             logger.info(f"✓ Generated {len(viz_files)} visualization files")
-            logger.info(
-                f"📊 View visualizations: {viz_dir / 'visualizations.html'}")
+            logger.info(f"📊 View visualizations: {viz_dir / 'visualizations.html'}")
 
             # Generate top-level dashboard listing all papers
             self.result_evaluator.generate_visualizations_index(
                 Path('outputs') / 'visualizations')
+            
         except Exception as e:
             logger.error(f"Failed to generate visualizations: {e}")
             # traceback imported globally; avoid re-import
@@ -878,6 +890,7 @@ class ReproductionAgent:
 
     def _extract_paper_sections(self, raw_text: str) -> dict:
         """Use EVALLab to extract key sections from paper."""
+
         system_prompt = (
             "You are an expert at reading research papers. "
             "Extract the following sections: abstract, methodology, experiments, and results. "
@@ -888,6 +901,7 @@ class ReproductionAgent:
             "If a section is long, include as much as possible. "
             "Do not include markdown, explanations, or any text outside the JSON object."
         )
+        
         # Truncate text to fit in context window (increase limit if possible)
         truncated_text = raw_text[:16000]
 
@@ -902,8 +916,10 @@ class ReproductionAgent:
             "{\"abstract\": \"text here\", \"methodology\": \"text here\", "
             "\"experiments\": \"text here\", \"results\": \"text here\"}"
         ) + f"\nPaper text:\n{truncated_text}"
+
         try:
             sections = self.extract_json(user_prompt, system_prompt)
+
             # Canonical keys and synonyms
             canonical_keys = {
                 "abstract": ["abstract"],
@@ -916,6 +932,7 @@ class ReproductionAgent:
                 ],
                 "results": ["results", "findings", "outcomes", "discussion", "conclusion", "summary"]
             }
+
             def flatten_section(val):
                 # Recursively flatten nested dicts/lists to extract all strings
                 if isinstance(val, str):
@@ -972,9 +989,11 @@ class ReproductionAgent:
             
             # If any section is missing, merge in regex fallback for that section
             fallback_sections = self._simple_section_extraction(raw_text)
+
             for k in default_sections:
                 if not default_sections[k].strip() and fallback_sections.get(k, "").strip():
                     logger.info(f"Merging fallback content for missing section: {k}")
+
                     default_sections[k] = fallback_sections[k]
 
             return default_sections
@@ -1039,9 +1058,11 @@ class ReproductionAgent:
 
         # Find all section headers and their positions
         matches = list(header_pattern.finditer(text))
+
         if not matches:
             # fallback: try to find abstract only
             abstract_match = re.search(r'(?i)abstract[:\s\n]+(.*?)(?=\n\n|\n[A-Z])', text, re.DOTALL)
+            
             if abstract_match:
                 sections['abstract'] = abstract_match.group(1).strip()[:2000]
 
@@ -1053,10 +1074,13 @@ class ReproductionAgent:
 
         # Build a list of (header, start, end)
         section_spans = []
+
         for i, match in enumerate(matches):
             header_text = match.group(2).strip()
+
             start = match.end()
             end = matches[i+1].start() if i+1 < len(matches) else len(text)
+
             section_spans.append((header_text, start, end))
 
         # Assign content to canonical sections using both direct mapping and keyword heuristics
@@ -1067,8 +1091,8 @@ class ReproductionAgent:
 
             if canonical:
                 sections[canonical] += content + '\n'
-            else:
 
+            else:
                 # Fuzzy keyword mapping for non-exact headers
                 if header_lower == 'abstract':
                     sections['abstract'] = content[:2000]
@@ -1103,6 +1127,7 @@ class ReproductionAgent:
         """Run experiments using the unified experiment executor (Stage 3)."""
         # Set up environment
         logger.info("Setting up experiment environment...")
+
         setup_success = self.experiment_executor.setup_environment(
             codebase_info.path,
             codebase_info.dependencies
@@ -1120,6 +1145,7 @@ class ReproductionAgent:
         if hasattr(self.repo_retriever, 'parse_readme_commands'):
             try:
                 readme_commands = self.repo_retriever.parse_readme_commands(codebase_info.path)
+
                 if readme_commands:
                     logger.info(f"✓ LLM parsed README commands")
                     main_script = readme_commands.get('main_script', '')
@@ -1166,6 +1192,7 @@ class ReproductionAgent:
                 readme_commands = None
                 if hasattr(self.repo_retriever, 'parse_readme_commands'):
                     readme_commands = self.repo_retriever.parse_readme_commands(codebase_info.path)
+
                     if readme_commands:
                         logger.info(f"  ✓ Parsed README commands: {readme_commands.get('main_script', 'N/A')}")
                 
@@ -1211,6 +1238,7 @@ class ReproductionAgent:
 
             except Exception as e:
                 logger.warning(f"  ⚠ Experiment execution failed: {e}")
+
         else:
             logger.debug(f"No YAML configuration for {codebase_info.path.name}")
 
@@ -1255,6 +1283,7 @@ class ReproductionAgent:
                 if result.success:
                     logger.info(
                         f"  ✓ Success (duration: {result.duration:.2f}s)")
+                    
                 else:
                     logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
 
@@ -1355,7 +1384,6 @@ class ReproductionAgent:
 
 def main():
     """Main entry point for CLI usage."""
-
     parser = argparse.ArgumentParser(
         description='Local Research Paper Reproduction Agent - Auto-detects paper and code from workspace'
     )
