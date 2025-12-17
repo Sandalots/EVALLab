@@ -24,12 +24,15 @@ def setup_logging(output_dir):
     log_file = Path(output_dir) / 'agent_execution.log'
     # Remove all handlers associated with the root logger object.
     root_logger = logging.getLogger()
+
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     root_logger.setLevel(logging.INFO)
+
     # File handler (plain)
     file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
     file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+
     # Console handler (color)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(ColoredFormatter(datefmt='%Y-%m-%d %H:%M:%S'))
@@ -71,6 +74,7 @@ def main():
         print("\n\033[1;93m📋 Command-Line Mode:\033[0m")
         if args.paper:
             print(f"  Paper: {args.paper}")
+
         if args.code:
             print(f"  Code: {args.code}")
         print()
@@ -148,9 +152,11 @@ def main():
     if args.paper:
         # User specified a paper
         paper_path = Path(args.paper)
+
         if not paper_path.exists():
             print(f"❌ Paper not found: {args.paper}")
             return 1
+        
         if not paper_path.suffix == '.pdf':
             print(f"❌ Not a PDF file: {args.paper}")
             return 1
@@ -158,20 +164,24 @@ def main():
         # Auto-detect: Look for any PDF in papers/ directory
         if paper_dir.exists():
             pdf_files = list(paper_dir.glob("*.pdf"))
+
             if pdf_files:
                 # Sort alphabetically for consistent behavior
                 pdf_files.sort()
                 paper_path = pdf_files[0]
                 print(f"✓ Auto-detected paper: {paper_path.name}")
+
                 if len(pdf_files) > 1:
                     print(f"  ℹ️  Found {len(pdf_files)} PDFs, using first alphabetically")
                     print(f"  ℹ️  Use --paper <filename> to specify a different paper")
                     paper_path = pdf_files[0]
                     print(f"✓ Auto-detected paper: {paper_path.name}")
+
                 else:
                     print(f"❌ No PDF files found in ./papers/")
                     print("   Please add your research paper PDF to ./papers/")
                     return 1
+                
             else:
                 print(f"❌ ./papers/ directory not found!")
                 print("   Please create it and add your research paper PDF")
@@ -181,16 +191,22 @@ def main():
 
     # Resolve codebase source
     codebase_source = None
+
     if args.code:
         codebase_source = args.code
+
         if args.code.startswith('http'):
             print(f"📦 Code source: {args.code} (GitHub)")
+
         else:
             code_path = Path(args.code)
+
             if not code_path.exists():
                 print(f"❌ Code path not found: {args.code}")
                 return 1
+            
             print(f"📦 Code source: {args.code} (local)")
+
     else:
         print(
             f"📦 Code source: auto-detect (papers/codebases/ or GitHub URLs from papers)")
@@ -200,6 +216,7 @@ def main():
     if not paper_dir.exists():
         print(f"❌ ./papers/ directory not found!")
         print("   Please create it and add your research paper PDF")
+
         return 1
 
     # Check for any code in papers/codebases directory
@@ -207,17 +224,22 @@ def main():
         print(f"⚠️  ./papers/codebases/ directory not found!")
         print("   📁 The agent will search for GitHub URLs in the paper.")
         print("   💡 Or create ./papers/codebases/ and place codebase there manually.")
+
     else:
         # Check if there are any subdirectories or Python files
         has_code = any(paper_source_dir.iterdir())
+
         if has_code:
             subdirs = [d.name for d in paper_source_dir.iterdir()
                        if d.is_dir()]
+            
             if subdirs:
                 print(f"✓ Found code directory: {paper_source_dir}")
                 print(f"   Subdirectories: {', '.join(subdirs[:3])}{' ...' if len(subdirs) > 3 else ''}")
+
             else:
                 print(f"✓ Found files in: {paper_source_dir}")
+
         else:
             print(f"⚠️  ./papers/codebases/ exists but is empty!")
             print("   📁 The agent will search for GitHub URLs in the paper.")
@@ -234,6 +256,7 @@ def main():
         print("   $ ollama serve")
         print("\n   And ensure you have a model installed:")
         print("   $ ollama pull llama3")
+
         return 1
 
     models = temp_agent.list_models()
@@ -241,16 +264,19 @@ def main():
         print("❌ No Ollama models found!")
         print("\n   Please pull a model:")
         print("   $ ollama pull llama3")
+
         return 1
 
     print(f"✓ Ollama is running (models: {', '.join(models[:3])})")
 
     # Set up output directory for this paper
     paper_name_for_log = paper_path.stem if paper_path else None
+
     if paper_name_for_log:
         paper_stem = paper_name_for_log.lower().replace(' ', '_')
         output_dir = Path('outputs/visualizations') / paper_stem
         output_dir.mkdir(parents=True, exist_ok=True)
+
     else:
         output_dir = Path('outputs/visualizations/unknown_paper')
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -260,7 +286,6 @@ def main():
     print("\n" + "=" * 100)
     print("\033[1;92m🚀 LAUNCHING 4-STAGE REPRODUCTION WORKFLOW...\033[0m")
     print("=" * 100 + "\n")
-
 
     try:
         agent = ReproductionAgent()
@@ -272,12 +297,14 @@ def main():
         end_time = time.time()
         runtime_seconds = end_time - start_time
         current, peak = tracemalloc.get_traced_memory()
+
         tracemalloc.stop()
         peak_mb = peak / (1024 * 1024)
 
 
         # Save runtime and memory info for HTML report AFTER visualizations are generated
         resource_path = output_dir / 'resource_usage.json'
+
         with open(resource_path, 'w') as f:
             json.dump({'runtime_seconds': runtime_seconds, 'peak_memory_mb': peak_mb}, f)
 
@@ -286,15 +313,19 @@ def main():
         try:
             from src.result_evaluator import ResultEvaluator
             result_evaluator = ResultEvaluator()
+
             # Find the files generated in the output_dir
             import pandas as pd
+
             # Try to load the detailed_comparison.csv for the DataFrame
             detailed_csv = output_dir / 'detailed_comparison.csv'
 
             if detailed_csv.exists():
                 df = pd.read_csv(detailed_csv)
+
                 # Try to infer the paper name from the directory
                 paper_name = output_dir.name
+
                 # Map expected keys to files
                 file_map = {
                     'overall_performance': output_dir / 'overall_performance.png',
@@ -311,23 +342,29 @@ def main():
                     'agent_log': output_dir / 'agent_execution.log',
                     'results_txt': next((f for f in output_dir.glob('*_results.txt')), None),
                 }
+
                 # Remove any missing files
                 files = {k: v for k, v in file_map.items() if v and v.exists()}
+
                 # Regenerate the per-paper HTML using the helper.dashboard function
                 from src.helper.dashboard import generate_visualization_index_html
+
                 html_content = generate_visualization_index_html(files, df, paper_name, output_dir)
                 html_path = output_dir / 'visualizations.html'
+
                 with open(html_path, 'w', encoding='utf-8') as f:
                     f.write(html_content)
 
             # Regenerate the top-level dashboard as well
             result_evaluator.generate_visualizations_index(output_dir.parent)
+
         except Exception as regen_exc:
             print(f"⚠️  Warning: Post-run HTML regeneration failed: {regen_exc}")
             # Do not return failure here; main pipeline already completed successfully.
 
         if 'error' in results:
             print(f"\n❌ Error: {results['error']}")
+
             return 1
 
         # Final Success Banner
@@ -353,11 +390,13 @@ def main():
 
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")
+
         return 1
     
     except Exception as e:
         print(f"\n❌ Error: {e}") 
         traceback.print_exc()
+        
         return 1
 
 
