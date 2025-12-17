@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 def setup_logging(output_dir):
     log_file = Path(output_dir) / 'agent_execution.log'
+
     # Remove all handlers associated with the root logger object.
     root_logger = logging.getLogger()
 
@@ -44,6 +45,7 @@ def main():
     parser = argparse.ArgumentParser(description="EVALLab: Automated Research Reproduction Agent")
     parser.add_argument('--paper', type=str, help='Path to the research paper PDF')
     parser.add_argument('--code', type=str, help='Path or URL to the codebase')
+
     args = parser.parse_args()
 
     start_time = time.time()
@@ -168,23 +170,27 @@ def main():
             if pdf_files:
                 # Sort alphabetically for consistent behavior
                 pdf_files.sort()
+
                 paper_path = pdf_files[0]
                 print(f"✓ Auto-detected paper: {paper_path.name}")
 
                 if len(pdf_files) > 1:
                     print(f"  ℹ️  Found {len(pdf_files)} PDFs, using first alphabetically")
                     print(f"  ℹ️  Use --paper <filename> to specify a different paper")
+
                     paper_path = pdf_files[0]
                     print(f"✓ Auto-detected paper: {paper_path.name}")
 
                 else:
                     print(f"❌ No PDF files found in ./papers/")
                     print("   Please add your research paper PDF to ./papers/")
+
                     return 1
                 
             else:
                 print(f"❌ ./papers/ directory not found!")
                 print("   Please create it and add your research paper PDF")
+
                 return 1
 
     print(f"\n📄 Paper: {paper_path.name}")
@@ -203,6 +209,7 @@ def main():
 
             if not code_path.exists():
                 print(f"❌ Code path not found: {args.code}")
+
                 return 1
             
             print(f"📦 Code source: {args.code} (local)")
@@ -275,11 +282,14 @@ def main():
     if paper_name_for_log:
         paper_stem = paper_name_for_log.lower().replace(' ', '_')
         output_dir = Path('outputs/visualizations') / paper_stem
+
         output_dir.mkdir(parents=True, exist_ok=True)
 
     else:
         output_dir = Path('outputs/visualizations/unknown_paper')
+
         output_dir.mkdir(parents=True, exist_ok=True)
+
     setup_logging(output_dir)
 
     # Run agent
@@ -296,6 +306,7 @@ def main():
         # Stop runtime and memory tracking
         end_time = time.time()
         runtime_seconds = end_time - start_time
+        
         current, peak = tracemalloc.get_traced_memory()
 
         tracemalloc.stop()
