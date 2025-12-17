@@ -84,7 +84,7 @@ class PaperParser:
 
             # Remove trailing punctuation
             url = re.sub(r'[\.,;:!\)\]\}]+$', '', url)
-            
+
             # Remove trailing reference numbers in brackets (e.g., [1], [12])
             url = re.sub(r'\[[0-9]+\]$', '', url)
             
@@ -92,9 +92,12 @@ class PaperParser:
             # Remove any trailing word characters that come after the repo name
             match = re.match(r'(https?://github\.com/[\w\-]+/[\w\-]+(?:\.git)?)', url)
 
+            # check for a match
             if match:
+                # Extract the cleaned URL
                 url = match.group(1)
             
+            # app to cleaned list
             cleaned_urls.append(url)
             
         # Remove duplicates while preserving order

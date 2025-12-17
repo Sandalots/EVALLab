@@ -1,4 +1,4 @@
-# Global EVALLab dependencies
+# Global EVALLab Agent Python Dependencies
 PyPDF2
 requests
 numpy

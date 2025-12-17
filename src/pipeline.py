@@ -154,11 +154,14 @@ class ReproductionAgent:
         for line in text.splitlines():
             for pat in metric_patterns:
                 m = re.search(pat, line, re.IGNORECASE)
+                
                 if m:
                     key = m.group(1).lower().translate(str.maketrans(' -', '__'))
+
                     try:
                         val = float(m.group(2))
                         metrics[key] = val
+
                     except (ValueError, TypeError):
                         continue
         return metrics
@@ -186,14 +189,18 @@ class ReproductionAgent:
         # Initialize components (using new 4-stage architecture)
         self.paper_parser = PaperParser()
         self.repo_retriever = RepoRetriever(llm_client=self)  # Pass self as LLM client
+
         # Extract paper name for per-paper logging
         paper_name = None
         if hasattr(self, 'paper_path') and self.paper_path:
             paper_name = Path(self.paper_path).stem
+
         elif 'paper' in self.config and self.config['paper']:
             paper_name = Path(self.config['paper']).stem
+
         self.experiment_executor = ExperimentExecutor(
             config=self.config, paper_name=paper_name)
+        
         self.result_evaluator = ResultEvaluator(
             llm_client=self,  # Pass self as we have integrated LLM methods
             threshold=self.config['evaluation']['threshold']
@@ -243,6 +250,7 @@ class ReproductionAgent:
             response = requests.get(
                 f"{self.ollama_base_url}/api/tags", timeout=5)
             return response.status_code == 200
+        
         except requests.exceptions.RequestException:
             return False
 
@@ -253,9 +261,12 @@ class ReproductionAgent:
                 f"{self.ollama_base_url}/api/tags", timeout=5)
             response.raise_for_status()
             data = response.json()
+
             return [model['name'] for model in data.get('models', [])]
+        
         except requests.exceptions.RequestException as e:
             logger.error(f"Error listing models: {e}")
+
             return []
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None,
@@ -294,10 +305,12 @@ class ReproductionAgent:
             response.raise_for_status()
 
             result = response.json()
+
             return result.get('response', '').strip()
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error generating response: {e}")
+
             raise
 
     def chat(self, messages: List[Dict[str, str]],
@@ -354,6 +367,7 @@ class ReproductionAgent:
 
         # Remove lines that are just '...'
         response = '\n'.join(line for line in response.splitlines() if line.strip() != '...')
+
         # Remove leading/trailing ellipses
         response = re.sub(r'^\s*\.\.\.+', '', response)
         response = re.sub(r'\.\.\.+\s*$', '', response)
@@ -372,35 +386,46 @@ class ReproductionAgent:
         # Try to find the first valid JSON object in the response using a stack-based approach
         def extract_first_json_object(text):
             start = text.find('{')
+
             if start == -1:
                 return None
+            
             depth = 0
+
             for i in range(start, len(text)):
                 if text[i] == '{':
                     depth += 1
+
                 elif text[i] == '}':  
                     depth -= 1
+
                     if depth == 0:
                         return text[start:i+1]
+                    
             return None
 
         json_candidate = extract_first_json_object(response)
+
         if json_candidate:
             response = json_candidate
 
 
         # Remove lines that are just '...'
         cleaned_response = '\n'.join(line for line in response.splitlines() if line.strip() != '...')
+
         # Remove inline or trailing ellipsis artifacts (e.g., , ... or ...)
         cleaned_response = re.sub(r',?\s*\.\.\.(,)?', lambda m: ',' if m.group(1) else '', cleaned_response)
+
         # Clean control characters that break JSON
         cleaned_response = re.sub(r'[\x00-\x1F\x7F]', '', cleaned_response)
+
         # Strip trailing periods, commas, and whitespace
         cleaned_response = re.sub(r'[\s\.,]+$', '', cleaned_response)
 
         # Auto-close unbalanced braces if needed (for truncated LLM output)
         open_braces = cleaned_response.count('{')
         close_braces = cleaned_response.count('}')
+
         if open_braces > close_braces:
             cleaned_response += '}' * (open_braces - close_braces)
 
@@ -413,12 +438,14 @@ class ReproductionAgent:
                 # json5 is optional; import at module scope if used broadly. Keep local if rare.
                 import json5
                 logger.warning("Trying to parse with json5 for more tolerant JSON parsing.")
+
                 return json5.loads(cleaned_response)
             
             except Exception as e2:
                 logger.error(f"Failed to parse JSON with both stdlib and json5: {e2}")
                 logger.error(f"Full raw EVALLab response:\n{response}")
                 logger.debug(f"Cleaned response:\n{cleaned_response}")
+
                 return {}
 
     def query_llm(self, prompt: str, system_prompt: Optional[str] = None) -> str:
@@ -460,16 +487,19 @@ class ReproductionAgent:
 
             if papers_dir.exists():
                 pdf_files = list(papers_dir.glob("*.pdf"))
+
                 if pdf_files:
                     paper_path = pdf_files[0]
                     logger.info(f"✓ Auto-detected paper: {paper_path.name}")
 
                 else:
                     logger.error("No PDF files found in ./papers/ directory")
+
                     return {'error': 'No paper PDF found'}
                 
             else:
                 logger.error("./papers/ directory not found")
+
                 return {'error': 'No paper directory found'}
 
         # Step 1: Check Ollama availability
@@ -502,6 +532,7 @@ class ReproductionAgent:
         if paper_content.github_urls:
             logger.info(
                 f"✓ Found {len(paper_content.github_urls)} GitHub URLs in paper")
+            
             for url in paper_content.github_urls:
                 logger.info(f"  - {url}")
 
@@ -524,10 +555,13 @@ class ReproductionAgent:
         # Ensure all are strings (join lists if needed)
         if isinstance(methodology, list):
             methodology = '\n'.join(str(x) for x in methodology)
+
         if isinstance(experiments, list):
             experiments = '\n'.join(str(x) for x in experiments)
+
         if isinstance(results, list):
             results = '\n'.join(str(x) for x in results)
+
         if isinstance(paper_content.abstract, list):
             paper_content.abstract = '\n'.join(str(x) for x in paper_content.abstract)
 
@@ -598,6 +632,7 @@ class ReproductionAgent:
             print("\033[91m└" + "─"*78 + "┘\033[0m")
             print("="*80 + "\n")
             logger.error("No codebase available!")
+
             return {'error': 'No codebase available - please add code to ./papers/codebases/'}
 
         logger.info(f"✓ Codebase retrieved at: {codebase_path}")
@@ -621,12 +656,14 @@ class ReproductionAgent:
 
         # Get repo-specific configuration for validation
         from src.helper.repo_config import get_repo_config
+
         repo_config = get_repo_config(codebase_info.path)
         validation_config = repo_config.data_validation if repo_config else None
 
         # Validate data integrity before running experiments (if configured)
         if validation_config:
             logger.info("\n[Stage 3.5/4] Validating data integrity...")
+
             validation_results = self.experiment_executor.validate_data_integrity(
                 codebase_info.path, validation_config)
 
@@ -650,6 +687,7 @@ class ReproductionAgent:
         
         if not experiment_results:
             logger.error("No experiments were run successfully")
+
             return {'error': 'Experiment execution failed'}
         
         logger.info(f"✓ Completed {len(experiment_results)} experiments")
@@ -925,9 +963,11 @@ class ReproductionAgent:
 
                         if found:
                             break
+
             # If all sections are empty, fallback
             if all(not v.strip() for v in default_sections.values()):
                 logger.warning("LLM returned empty or invalid sections, falling back to regex extraction.")
+
                 return self._simple_section_extraction(raw_text)
             
             # If any section is missing, merge in regex fallback for that section
@@ -936,11 +976,13 @@ class ReproductionAgent:
                 if not default_sections[k].strip() and fallback_sections.get(k, "").strip():
                     logger.info(f"Merging fallback content for missing section: {k}")
                     default_sections[k] = fallback_sections[k]
+
             return default_sections
         
         except Exception as e:
             logger.error(f"Failed to extract sections with LLM: {e}")
             logger.debug(f"Attempting simple text extraction as fallback...")
+
             return self._simple_section_extraction(raw_text)
 
     def _simple_section_extraction(self, text: str) -> dict:
@@ -1082,11 +1124,14 @@ class ReproductionAgent:
                     logger.info(f"✓ LLM parsed README commands")
                     main_script = readme_commands.get('main_script', '')
                     main_args = readme_commands.get('main_args', [])
+
                     if main_script:
                         script_path = codebase_info.path / main_script
+
                         if script_path.exists():
                             logger.info(f"  Using LLM-discovered script: {main_script}")
                             priority_scripts.append((script_path, main_args))
+
             except Exception as e:
                 logger.debug(f"LLM README parsing failed: {e}")
         
@@ -1096,8 +1141,10 @@ class ReproductionAgent:
             python_cmds = re.findall(r'python[3]?\s+([\w_/\.]+\.py)(?:\s+(.*))?',
                                      codebase_info.readme_content, re.IGNORECASE)
             import shlex
+
             for script_name, args in python_cmds:
                 script_path = codebase_info.path / script_name
+
                 if script_path.exists():
                     logger.info(
                         f"Found priority script from README: {script_name}")
@@ -1134,6 +1181,7 @@ class ReproductionAgent:
                     # Save to disk for future use
                     save_repo_config(repo_config)
                     logger.info(f"  ✓ Generated and saved config for {repo_config.name}")
+
             except Exception as e:
                 logger.warning(f"  ⚠ Failed to generate config with LLM: {e}")
         
@@ -1145,6 +1193,7 @@ class ReproductionAgent:
                 logger.info(f"  Running {repo_config.name} pre-run setup...")
                 execute_pre_run_setup(repo_config, codebase_info.path, logger)
                 logger.info(f"  ✓ Pre-run setup complete")
+
             except Exception as e:
                 logger.warning(f"  ⚠ Pre-run setup failed: {e}")
             
@@ -1159,6 +1208,7 @@ class ReproductionAgent:
                 )
                 results.extend(exp_results)
                 logger.info(f"  ✓ Completed {len(exp_results)} experiments")
+
             except Exception as e:
                 logger.warning(f"  ⚠ Experiment execution failed: {e}")
         else:
@@ -1182,6 +1232,7 @@ class ReproductionAgent:
 
             if result.success:
                 logger.info(f"  ✓ Success (duration: {result.duration:.2f}s)")
+
             else:
                 logger.warning(f"  ✗ Failed: {result.stderr[:200]}")
 
@@ -1259,7 +1310,7 @@ class ReproductionAgent:
             if log_file.exists():
                 with open(log_file, 'r', encoding='utf-8') as log:
                     f.write(log.read())
-                    
+
             else:
                 f.write("[Log file not found]\n")
 
@@ -1330,6 +1381,7 @@ def main():
     # Validate paper path if provided
     if args.paper_path and not args.paper_path.exists():
         print(f"Error: Paper file not found: {args.paper_path}")
+
         sys.exit(1)
 
     # Create and run agent
@@ -1338,6 +1390,7 @@ def main():
 
     if 'error' in results:
         print(f"Error: {results['error']}")
+
         sys.exit(1)
 
 

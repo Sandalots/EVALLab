@@ -1891,6 +1891,7 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
+            
         generated_files['index_html'] = html_path
 
         logger.info(f"\n{'='*80}")

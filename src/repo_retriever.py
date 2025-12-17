@@ -582,7 +582,7 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
                 else:
                     # Show file extension
                     lines.append(f"{prefix}├── {item.name}")
-                    
+
         except PermissionError:
             lines.append(f"{prefix}├── [Permission Denied]")
         
@@ -644,9 +644,11 @@ If information is not found, use empty lists [] or empty string "". Return ONLY 
             
             # Extract JSON from response
             result = self._extract_json(response)
+            
             if result and isinstance(result, dict):
                 logger.info(f"✓ LLM parsed README commands from {readme_path.name}")
                 logger.debug(f"  Extracted: {result.get('main_script', 'N/A')}")
+
                 return result
             
         except Exception as e:
@@ -680,6 +682,7 @@ If information is not found, use empty lists [] or empty string "". Return ONLY 
 
             if file.is_file() and not any(p.startswith('.') for p in file.parts):
                 ext = file.suffix
+
                 extensions[ext] = extensions.get(ext, 0) + 1
 
         info['file_counts'] = extensions
