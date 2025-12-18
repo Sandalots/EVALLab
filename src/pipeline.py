@@ -19,6 +19,7 @@ import requests
 import argparse
 import traceback
 
+# EVALLab stages imports
 from src.paper_parser import PaperParser, PaperContent
 from src.repo_retriever import RepoRetriever
 from src.experiment_executor import ExperimentExecutor, CodebaseInfo, ExperimentConfig
@@ -33,6 +34,7 @@ from src.helper.repo_config import (
 # Custom colored logging formatter
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with colors for different log levels and highlights for special content."""
+
     # ANSI color codes
     COLORS = {
         'DEBUG': '\033[36m',      # Cyan
@@ -41,6 +43,7 @@ class ColoredFormatter(logging.Formatter):
         'ERROR': '\033[91m',      # Red
         'CRITICAL': '\033[95m',   # Magenta
     }
+
     RESET = '\033[0m'
 
     # Color for different parts
@@ -52,9 +55,11 @@ class ColoredFormatter(logging.Formatter):
     NUMBER_COLOR = '\033[96m'     # Cyan - for numbers
     PATH_COLOR = '\033[93m'       # Yellow - for file paths
     METRIC_COLOR = '\033[95m'     # Magenta - for percentages/metrics
+
     # Red - for ML metric names (F1, accuracy, etc.)
     ML_METRIC_COLOR = '\033[91m'
     KEYWORD_COLOR = '\033[93m'    # Bright yellow - for special keywords
+
     # Green - for status words (success, pass, etc.)
     STATUS_COLOR = '\033[92m'
 
@@ -165,9 +170,10 @@ class ReproductionAgent:
 
                     except (ValueError, TypeError):
                         continue
-        return metrics
-    """Main agent that coordinates paper reproduction workflow with integrated LLM."""
 
+        return metrics
+    
+    """Main agent that coordinates paper reproduction workflow with integrated LLM."""
     def __init__(self, config_path: Optional[Path] = None):
         """
         Initialize the reproduction agent.
@@ -219,6 +225,7 @@ class ReproductionAgent:
         if not config_path.exists():
             logger.warning(
                 f"Config file not found: {config_path}, using defaults")
+            
             return self._default_config()
 
         with open(config_path, 'r') as f:
@@ -348,6 +355,7 @@ class ReproductionAgent:
             response.raise_for_status()
 
             result = response.json()
+
             return result.get('message', {}).get('content', '').strip()
 
         except requests.exceptions.RequestException as e:
@@ -377,6 +385,7 @@ class ReproductionAgent:
 
         # Always skip to the first '{' (ignore any preamble)
         first_brace = response.find('{')
+
         if first_brace != -1:
             response = response[first_brace:]
 
@@ -1125,6 +1134,7 @@ class ReproductionAgent:
     def _run_experiments_unified(self, paper_content: PaperContent,
                                  codebase_info: CodebaseInfo) -> list:
         """Run experiments using the unified experiment executor (Stage 3)."""
+
         # Set up environment
         logger.info("Setting up experiment environment...")
 
@@ -1166,6 +1176,7 @@ class ReproductionAgent:
             # Look for python commands in README
             python_cmds = re.findall(r'python[3]?\s+([\w_/\.]+\.py)(?:\s+(.*))?',
                                      codebase_info.readme_content, re.IGNORECASE)
+            
             import shlex
 
             for script_name, args in python_cmds:
@@ -1185,6 +1196,7 @@ class ReproductionAgent:
         # If no config exists, try to generate one using LLM
         if not repo_config:
             logger.info("No repo config found - attempting LLM-based generation...")
+
             try:
                 from src.helper.repo_config import llm_generate_repo_config, save_repo_config
                 
@@ -1292,6 +1304,7 @@ class ReproductionAgent:
     def extract_and_store_paper_metrics(self, paper_content: PaperContent, output_dir: Path):
         """Extract metrics from the paper's results section and save as ground truth for comparison."""
         metrics = {}
+        
         if paper_content.results:
             metrics = self._extract_metrics_from_text(paper_content.results)
 
@@ -1321,8 +1334,7 @@ class ReproductionAgent:
         with open(output_file, 'w', encoding='utf-8') as f:
             # Header
             f.write("="*100 + "\n")
-            f.write(
-                "EVALLab: RESEARCH PAPER REPRODUCTION AGENT - COMPLETE EXECUTION LOG\n")
+            f.write("EVALLab: RESEARCH PAPER REPRODUCTION AGENT - COMPLETE EXECUTION LOG\n")
             f.write("="*100 + "\n\n")
 
             f.write(f"Paper: {paper_path.name}\n")
@@ -1347,8 +1359,7 @@ class ReproductionAgent:
 
             # Section 2: Detailed Results
             f.write("╔" + "═"*98 + "╗\n")
-            f.write(
-                "║" + " SECTION 2: REPRODUCTION RESULTS EVALUATION ".center(98) + "║\n")
+            f.write("║" + " SECTION 2: REPRODUCTION RESULTS EVALUATION ".center(98) + "║\n")
             f.write("╚" + "═"*98 + "╝\n\n")
             f.write(report + "\n\n")
 
@@ -1368,8 +1379,7 @@ class ReproductionAgent:
             # Section 5: Conclusions
             if conclusions:
                 f.write("╔" + "═"*98 + "╗\n")
-                f.write(
-                    "║" + " SECTION 5: CONCLUSIONS & RECOMMENDATIONS ".center(98) + "║\n")
+                f.write("║" + " SECTION 5: CONCLUSIONS & RECOMMENDATIONS ".center(98) + "║\n")
                 f.write("╚" + "═"*98 + "╝\n\n")
                 f.write(conclusions + "\n\n")
 

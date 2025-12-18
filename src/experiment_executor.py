@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 def _get_python_executable():
     """Get the appropriate Python executable for the current platform."""
     if platform.system() == 'Windows':
+
         # Try python first, then py launcher
         for cmd in ['python', 'py']:
 
@@ -114,6 +115,7 @@ class ExperimentExecutor:
 
         for pattern in output_patterns:
             for output_file in working_dir.glob(pattern):
+                
                 # Skip baseline_metrics.json - it's for comparison, not experiment output
                 if output_file.name == 'baseline_metrics.json':
                     continue
@@ -499,6 +501,7 @@ class ExperimentExecutor:
 
         if not venv_exists:
             logger.info("Creating virtual environment...")
+
             # Try python3.10, then python3.11, then error if neither is found
             python_versions = ["python3.10", "python3.11"]
             python_cmd = None
@@ -906,6 +909,7 @@ class ExperimentExecutor:
                         if len(m.groups()) == 3 and m.group(1).upper() in model_names:
                             model = m.group(1).lower()
                             metric = m.group(2).lower().translate(str.maketrans(' -', '__'))
+
                             key = f"{model}_{metric}"
 
                             try:
@@ -974,6 +978,7 @@ class ExperimentExecutor:
                             'test_name': test_match.group(1),
                             'outcome': test_match.group(2).upper()
                         })
+
                 metrics['tests_passed'] = passed
                 metrics['tests_failed'] = failed
                 metrics['tests_errored'] = errors
@@ -989,6 +994,7 @@ class ExperimentExecutor:
             # Write all found metrics to complete_results.json (merge with existing if present)
             try:
                 results_path = working_dir / 'complete_results.json'
+
                 existing_metrics = {}
 
                 if results_path.exists():
@@ -1054,6 +1060,7 @@ class ExperimentExecutor:
                     # If script supports --download, add it
                     if '--download' not in config.args:
                         patched_args = config.args + ['--download']
+
                         cmd2 = [python_cmd, str(script_path)] + patched_args
                         self.logger.info(f"[run_experiment] Retrying subprocess: {' '.join(cmd2)}")
 

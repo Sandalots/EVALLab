@@ -64,6 +64,7 @@ class ResultEvaluator:
 
                         if isinstance(metric_value, dict):
                             for threshold, val in metric_value.items():
+
                                 if isinstance(val, (int, float)) and not isinstance(val, bool):
                                     full_key = f"{current_key}/{metric_name}@{threshold}"
                                     metrics[full_key] = float(val)
@@ -81,6 +82,7 @@ class ResultEvaluator:
 
         # Also add all top-level numeric keys for flat summary metrics
         if not prefix and isinstance(data, dict):
+
             for key, value in data.items():
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     metrics[key] = float(value)
@@ -100,12 +102,14 @@ class ResultEvaluator:
         
         # 1. Check for paper_metrics.json in experiment directory (manual baseline)
         paper_metrics_path = codebase_path / 'paper_metrics.json'
+
         logger.debug(f"[DEBUG] Checking for paper_metrics.json in experiment directory: {paper_metrics_path}")
 
         if paper_metrics_path.exists():
             try:
                 with open(paper_metrics_path, 'r') as f:
                     logger.info("✓ Using paper_metrics.json as baseline for metric comparison (experiment directory).")
+
                     return json.load(f)
                 
             except Exception as e:
@@ -117,12 +121,14 @@ class ResultEvaluator:
 
             if results_file:
                 config_results_path = codebase_path / results_file
+
                 logger.debug(f"[DEBUG] Checking repo_config results_file: {config_results_path}")
 
                 if config_results_path.exists():
                     try:
                         with open(config_results_path, 'r') as f:
                             logger.info(f"✓ Using intelligently discovered baseline from {results_file}")
+
                             return json.load(f)
                         
                     except Exception as e:
@@ -136,6 +142,7 @@ class ResultEvaluator:
             try:
                 with open(oracle_baseline_path, 'r') as f:
                     logger.info(f"✓ Using authors' baseline from outputs_all_methods_oracle/complete_results.json")
+
                     return json.load(f)
                 
             except Exception as e:
@@ -143,12 +150,14 @@ class ResultEvaluator:
 
         # 3. Check for outputs_all_methods/complete_results.json
         methods_baseline_path = codebase_path / 'outputs_all_methods' / 'complete_results.json'
+
         logger.debug(f"[DEBUG] Checking for baseline at: {methods_baseline_path}")
 
         if methods_baseline_path.exists():
             try:
                 with open(methods_baseline_path, 'r') as f:
                     logger.info(f"✓ Using baseline from outputs_all_methods/complete_results.json")
+
                     return json.load(f)
                 
             except Exception as e:
@@ -156,11 +165,13 @@ class ResultEvaluator:
 
         # 4. Recursive search under nearest 'papers' or 'codebases' dirs
         current = codebase_path
+
         found = False
 
         for level in range(5):  # Search up to 5 levels up
             codebases_dir = current / 'codebases'
             papers_dir = current / 'papers'
+
             logger.debug(f"[DEBUG] Searching for paper_metrics.json in: {codebases_dir} and {papers_dir} (level {level})")
 
             for d in [codebases_dir, papers_dir]:
@@ -180,7 +191,9 @@ class ResultEvaluator:
                                 
                             except Exception as e:
                                 logger.error(f"Failed to load paper_metrics.json from {file_path}: {e}")
+
                             found = True
+
                             break
 
                 else:
@@ -468,8 +481,10 @@ class ResultEvaluator:
                 if report_path.exists():
                     try:
                         metrics = self._parse_single_report_file(report_path)
+
                         if metrics:
                             logger.info(f"✓ Using hinted report file: {report_file}")
+
                             return BaselineMetrics(metrics=metrics, source=f"Parsed from {report_file} (repo_config hint)")
                         
                     except Exception as e:
@@ -642,6 +657,7 @@ JSON:"""
 
         for dir_name in output_dirs:
             report_path = codebase_path / dir_name / "report.md"
+
             if report_path.exists():
                 try:
                     parsed = self._parse_single_report_file(report_path)
@@ -725,6 +741,7 @@ JSON:"""
                     mrr = float(retrieval_match.group(3))
 
                     base_key = f"{current_config}/{current_task_type}/{retriever}"
+
                     metrics_by_config.setdefault(base_key, {})
                     metrics_by_config[base_key]['recall@10'] = recall
                     metrics_by_config[base_key]['mrr'] = mrr
@@ -739,6 +756,7 @@ JSON:"""
                     f1 = float(task_match.group(3))
 
                     base_key = f"{current_config}/{current_task_type}/{retriever}"
+
                     metrics_by_config.setdefault(base_key, {})
                     metrics_by_config[base_key]['accuracy'] = accuracy
                     metrics_by_config[base_key]['f1'] = f1
@@ -1020,6 +1038,7 @@ JSON:"""
         from collections import defaultdict
 
         by_exp = defaultdict(list)
+
         for comp in sample:
             exp = comp.configuration.split('/')[0]
             by_exp[exp].append(comp)
@@ -1169,8 +1188,10 @@ Provide a concise analysis (3-4 paragraphs)."""
         lines.append("")
         lines.append("Overall Totals:")
         lines.append("-" * 80)
+
         total_comparisons = len(comparisons)
         total_passing = sum(1 for c in comparisons if c.within_threshold)
+        
         lines.append(f"  TOTAL: {total_passing}/{total_comparisons} pass ({total_passing/total_comparisons*100:.1f}%)")
 
         lines.append("")
@@ -1616,6 +1637,7 @@ Provide a concise analysis (3-4 paragraphs)."""
                 'within_threshold': comp.within_threshold,
                 'configuration': comp.configuration
             }
+
             for comp in comparisons
         ]
 
@@ -1632,13 +1654,16 @@ Provide a concise analysis (3-4 paragraphs)."""
             ansi_suffixes = [*(f"{i}m" for i in range(30, 38)), *(f"{i}m" for i in range(90, 98)), "39m", "0m"]
 
             for suf in ansi_suffixes:
+
                 if suf in txt:
                     txt = txt.replace(suf, "")
 
             txt = txt.replace("\u001b", "")
+
             return txt
 
         for col in ['experiment_set', 'granularity', 'strategy', 'task_type', 'retriever', 'metric_name', 'configuration']:
+
             if col in df.columns:
                 df[col] = df[col].apply(_clean_artifacts)
 
@@ -1656,6 +1681,7 @@ Provide a concise analysis (3-4 paragraphs)."""
 
         if df_matched.empty:
             logger.warning("All comparisons missing baseline (N/A). Visualizations will be minimal.")
+
             df_matched = df.copy()
 
         # Handle empty DataFrame or missing column gracefully
@@ -1670,6 +1696,7 @@ Provide a concise analysis (3-4 paragraphs)."""
         # All metrics (aggregate + per-example now included in df_matched)
         within_threshold = df_matched['within_threshold'].sum()
         total = len(df_matched)
+        
         outside_threshold = total - within_threshold
 
         bars = ax.bar(['Within Threshold\n(Success)', 'Outside Threshold\n(Failed)'],
@@ -1896,14 +1923,18 @@ Provide a concise analysis (3-4 paragraphs)."""
         # 7. Export detailed CSV
         # Export matched-only and unmatched CSVs
         csv_matched = output_dir / 'detailed_comparison.csv'
+
         df_matched.to_csv(csv_matched, index=False)
+
         generated_files['detailed_csv'] = csv_matched
 
         df_unmatched = df[df['baseline_value'] == 'N/A']
 
         if not df_unmatched.empty:
             csv_unmatched = output_dir / 'detailed_unmatched.csv'
+
             df_unmatched.to_csv(csv_unmatched, index=False)
+
             generated_files['unmatched_csv'] = csv_unmatched
 
         # Add per_example_diffs.html if it exists

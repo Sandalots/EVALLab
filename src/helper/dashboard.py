@@ -177,6 +177,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     # Visualizations with captions
     viz_html = ""
+
     plot_keys = [
         ('overall_performance', 'Overall Performance'),
         ('performance_by_configuration', 'Performance by Configuration'),
@@ -197,6 +198,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     # Metrics Table (color-coded)
     table_html = ""
+
     if df is not None and not df.empty:
         table_html += '<div class="visualization"><h2>Metric Comparison Table</h2><div class="metrics-table-wrapper"><table class="metrics-table">'
         table_html += '<tr><th>Configuration</th><th>Metric</th><th>Baseline</th><th>Reproduced</th><th>Diff (%)</th><th>Status</th></tr>'
@@ -210,6 +212,7 @@ def generate_visualization_index_html(files: dict, df: pd.DataFrame, paper_name:
 
     # Agent log
     log_html = ""
+
     if 'agent_log' in files and files['agent_log'].exists():
         
         try:

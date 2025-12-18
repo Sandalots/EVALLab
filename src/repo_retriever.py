@@ -99,6 +99,7 @@ class RepoRetriever:
                 
                 if cloned_path:
                     logger.info(f"✓ Using user-provided GitHub repository")
+
                     return cloned_path
                 
                 # Clone failed - prompt user for manual clone
@@ -120,6 +121,7 @@ class RepoRetriever:
 
                     if code_dir and code_dir != local_path:
                         logger.info(f"✓ LLM identified code directory: {code_dir}")
+
                         return code_dir
                 
                 # Heuristic fallback: check for common 'code' subdirectory
@@ -127,9 +129,11 @@ class RepoRetriever:
 
                 if code_subdir.is_dir() and self._looks_like_code_dir(code_subdir):
                     logger.info(f"✓ Using 'code' subdirectory: {code_subdir}")
+
                     return code_subdir
                 
                 logger.info(f"✓ Using user-provided codebase: {local_path}")
+
                 return local_path
             else:
                 logger.error(
@@ -154,10 +158,12 @@ class RepoRetriever:
 
                     else:
                         subprocess.run(['bash', str(script_path)], check=True)
+
                         code_path = self._find_local_code()
 
                         if code_path:
                             logger.info(f"✓ Using fetched local codebase: {code_path}")
+
                             return code_path
                         
                         else:
@@ -182,10 +188,12 @@ class RepoRetriever:
         # Try LLM-based semantic matching if available
         if self.llm_client and self.paper_path:
             logger.info("Attempting LLM-based semantic codebase matching...")
+
             matched_code = self._llm_match_codebase()
 
             if matched_code:
                 logger.info(f"✓ Using LLM-matched local codebase: {matched_code}")
+
                 return matched_code
         
         # Fallback: Try to find any local code without LLM
@@ -193,6 +201,7 @@ class RepoRetriever:
 
         if local_code:
             logger.info(f"✓ Using local codebase (heuristic fallback): {local_code}")
+
             return local_code
         
         # Otherwise, fail gracefully
@@ -362,6 +371,7 @@ class RepoRetriever:
 
             if result.returncode == 0:
                 logger.info(f"✓ Successfully cloned to: {clone_dir}")
+
                 return clone_dir
             
             else:
@@ -392,10 +402,12 @@ class RepoRetriever:
 
         except subprocess.TimeoutExpired:
             logger.error("Repository clone timed out after 5 minutes")
+
             return None
         
         except Exception as e:
             logger.error(f"Error cloning repository: {e}")
+
             return None
 
     def _llm_match_codebase(self) -> Optional[Path]:
@@ -406,6 +418,7 @@ class RepoRetriever:
             return None
         
         available_codebases = [d for d in self.paper_source_dir.iterdir() if d.is_dir()]
+
         if not available_codebases:
             return None
         
@@ -417,6 +430,7 @@ class RepoRetriever:
 
         for path in available_codebases[:10]:  # Limit to prevent token overflow
             readme = self._read_codebase_readme(path)
+
             codebase_info.append({
                 'name': path.name,
                 'readme_excerpt': readme[:400] if readme else "No README found"
@@ -477,12 +491,14 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
         candidates = []
 
         for item in base_path.rglob("*.py"):
+
             if any(name in item.name.lower() for name in ['main', 'run', 'train', 'experiment']):
                 candidates.append(item.parent)
         
         # Score candidates by how many entry point scripts they have
         if candidates:
             from collections import Counter
+
             candidate_scores = Counter(candidates)
             best_candidate = candidate_scores.most_common(1)[0][0]
 
@@ -491,6 +507,7 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
                    for script in ['main.py', 'run.py', 'train.py', 'experiment.py']):
                 
                 logger.debug(f"Heuristic found code directory with entry points: {best_candidate.relative_to(base_path)}")
+                
                 return best_candidate
         
         # Fallback to LLM if heuristics fail
@@ -508,6 +525,7 @@ Respond ONLY with valid JSON: {{\"best_match\": \"codebase_name or null\", \"con
         py_files_info = "\n".join(python_files[:15]) if python_files else "No Python files found"
         
         prompt = f"""Given this directory structure:
+
 {dir_tree}
 
 Python files found:
@@ -528,6 +546,7 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
             if code_dir and confidence > 0.6:  # Increased threshold
                 if code_dir == '.':
                     logger.debug(f"LLM identified root as code directory (confidence: {confidence:.2f})")
+
                     return base_path
                 
                 code_path = base_path / code_dir
@@ -535,6 +554,7 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
                 if code_path.exists():
                     logger.debug(f"LLM identified code directory: {code_dir} (confidence: {confidence:.2f})")
                     logger.debug(f"  Reasoning: {result.get('reasoning', 'N/A')}")
+
                     return code_path
                 
         except Exception as e:
@@ -543,6 +563,7 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
         # Final fallback: return base_path if it has Python files
         if python_files:
             logger.debug(f"Fallback: using base directory with {len(python_files)} Python files")
+
             return base_path
         
         return None
@@ -560,6 +581,7 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
                 
                 except Exception:
                     continue
+
         return None
     
     def _get_directory_tree(self, path: Path, max_depth: int = 2, current_depth: int = 0, prefix: str = "") -> str:
@@ -568,6 +590,7 @@ Respond ONLY with valid JSON: {{\"code_dir\": \"relative/path or .\", \"confiden
             return ""
         
         lines = []
+
         try:
             items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
 

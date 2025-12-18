@@ -49,6 +49,8 @@ def setup_logging(output_dir):
 # entrypoint for EVALLab
 def main():
     parser = argparse.ArgumentParser(description="EVALLab: Automated Research Reproduction Agent")
+
+    # handle command-line args
     parser.add_argument('--paper', type=str, help='Path to the research paper PDF')
     parser.add_argument('--code', type=str, help='Path or URL to the codebase')
 
@@ -88,6 +90,7 @@ def main():
 
         if args.code:
             print(f"  Code: {args.code}")
+            
         print()
 
     # Main EVALLab Header

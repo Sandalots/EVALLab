@@ -59,8 +59,7 @@ class PaperParser:
                 content.raw_text = "\n".join(page.extract_text() for page in pdf_reader.pages)
 
                 # Extract GitHub URLs
-                content.github_urls = self._extract_github_urls(
-                    content.raw_text)
+                content.github_urls = self._extract_github_urls(content.raw_text)
 
         except Exception as e:
             raise ValueError(f"Error parsing PDF: {e}")

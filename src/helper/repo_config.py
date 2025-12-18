@@ -82,6 +82,7 @@ def load_all_configs() -> Dict[str, RepoConfig]:
     
     if not CONFIGS_DIR.exists():
         logger.warning(f"Config directory not found: {CONFIGS_DIR}")
+
         return configs
     
     for yaml_file in CONFIGS_DIR.glob("*.yaml"):
@@ -132,6 +133,7 @@ def llm_generate_repo_config(
         
         # Read README if available and not pre-parsed
         readme_content = ""
+
         readme_names = ['README.md', 'README.txt', 'README', 'readme.md', 'Readme.md']
 
         for name in readme_names:
@@ -223,6 +225,7 @@ def llm_generate_repo_config(
 
                     if any(keyword in content.lower() for keyword in ['output', 'result', 'report', 'metrics']):
                         rel_path = md_file.relative_to(codebase_path)
+
                         markdown_docs.append({
                             'path': str(rel_path),
                             'snippet': content[:300]
@@ -235,6 +238,7 @@ def llm_generate_repo_config(
                     pass
         
         output_files_info = "\n".join(f"  - {f}" for f in output_files) if output_files else "None found"
+
         markdown_info = ""
 
         if markdown_docs:
@@ -320,8 +324,10 @@ IMPORTANT:
 Return ONLY the JSON configuration:"""
 
         response = llm_client.query_llm(prompt)
+
         if not response:
             log.warning("LLM returned empty response for config generation")
+
             return None
         
         # Extract JSON from response
@@ -340,8 +346,10 @@ Return ONLY the JSON configuration:"""
                 r'```\s*(.*?)\s*```',
                 r'\{.*\}',
             ]
+
             for pattern in patterns:
                 match = re.search(pattern, text, re.DOTALL)
+
                 if match:
                     try:
                         return json.loads(match.group(1) if '```' in pattern else match.group(0))
@@ -354,6 +362,7 @@ Return ONLY the JSON configuration:"""
 
         if not config_data or not isinstance(config_data, dict):
             log.warning("Failed to parse LLM response as JSON")
+
             return None
         
         # Convert JSON to RepoConfig
@@ -378,6 +387,7 @@ Return ONLY the JSON configuration:"""
     except Exception as e:
         if logger:
             logger.error(f"Failed to generate config with LLM: {e}")
+            
         return None
 
 
